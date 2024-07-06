@@ -21,10 +21,10 @@ fn main() {
     let mut vehicle_gps_enable = true;
     let mut vehicle_cell_enable = true;
     loop {
-        match can_conn.as_ref().expect("REASON").get_messages() {
-            Ok(frame) => {
-                trace!("UserSetting: {:?}", frame);
-                for (signal, value) in frame {
+        match can_conn.as_ref().expect("REASON").get_signals() {
+            Ok(_signal) => {
+                trace!("UserSetting: {:?}", _signal);
+                for (signal, value) in _signal {
                     match signal.to_string().as_str() {
                         "ble_cellular" => {
                             vehicle_cell_enable = value != 0.0;
@@ -39,7 +39,7 @@ fn main() {
                 }
 
             }
-            Err(e) => eprintln!("Error reading CAN frame: {}", e),
+            Err(e) => eprintln!("Error reading CAN Signal: {}", e),
         }
 
         if modem_cli.waiting_for_ready() {
@@ -82,7 +82,6 @@ fn main() {
         } else {
             info!("Modem is not ready");
         }
-
-        // thread::sleep(Duration::from_millis(50));
+        thread::sleep(Duration::from_millis(100));
     }
 }

@@ -8,18 +8,26 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use socketcan::{CanSocket, EmbeddedFrame, Socket};
 use canparse::pgn::{ParseMessage, PgnLibrary};
-use socketcan::CanFrame;
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct CanUtils {
     hash_msg: HashMap<String, u32>,
     socket_can: CanSocket,
-    can_info: PgnLibrary
+    can_info: PgnLibrary,
+    id_and_signal: HashMap<u32, Vec<String>>,
 }
 
 impl CanUtils {
-    pub fn new(dbcpath: String, canport: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn new<P: AsRef<Path>>(dbcpath: P, canport: &str) -> Result<Self, Box<dyn Error>> {
+        let dbcpath_str = dbcpath.as_ref().to_str().ok_or("Invalid DBC path")?.to_string();
         let mut hash_msg = HashMap::new();
+        let can_info = PgnLibrary::from_dbc_file(&dbcpath_str)?;
+        let id_and_signal = can_info
+            .hash_of_canid_signals()
+            .into_iter()
+            .map(|(k, v)| (k, v.into_iter().map(String::from).collect()))
+            .collect::<HashMap<u32, Vec<String>>>();
 
         // Read the DBC file and populate hash_msg
         let file = File::open(&dbcpath)?;
@@ -41,7 +49,8 @@ impl CanUtils {
         Ok(CanUtils {
             hash_msg,
             socket_can: CanSocket::open(canport)?,
-            can_info: PgnLibrary::from_dbc_file(dbcpath)?,
+            can_info,
+            id_and_signal,
         })
     }
 
@@ -101,17 +110,16 @@ impl CanUtils {
         }
     }
 
-    pub fn get_messages(&self) -> Result<HashMap<String, f32>, Box<dyn Error>> {
+    pub fn get_signals(&self) -> Result<HashMap<String, f32>, Box<dyn Error>> {
         let mut result = HashMap::new();
 
         match self.socket_can.read_frame() {
             Ok(frame) => {
                 let can_id: u32 = frame.id_word();
                 log::trace!("Got message CAN ID: {:X}", can_id);
-                let id_and_signal: HashMap<u32, Vec<&str>> = self.can_info.hash_of_canid_signals();
                 let mut can_padded_msg = [0u8; 8];
 
-                if let Some(can_msg) = id_and_signal.get(&can_id) {
+                if let Some(can_msg) = self.id_and_signal.get(&can_id) {
                     for signal in can_msg {
                         if let Some(signal_info) = self.can_info.get_spn(signal) {
                             let can_msg_data = {
