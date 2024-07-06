@@ -1,14 +1,34 @@
-use dbus::arg::messageitem::MessageItem;
-use dbus::blocking::stdintf::org_freedesktop_dbus::ObjectManager;
-use dbus::blocking::BlockingSender;
-use dbus::blocking::Connection;
-use dbus::message::Message;
-use std::time::Duration;
-use std::error::Error;
-use dbus::blocking::Proxy;
-use std::collections::HashMap;
+use dbus::{blocking::Connection, Message};
 use dbus::arg::RefArg;
-use log::{debug, trace, error, info, warn};
+use std::time::Duration;
+use std::collections::HashMap;
+use log::{trace, info};
+use dbus::arg::messageitem::MessageItem;
+use dbus::blocking::BlockingSender;
+use dbus::blocking::stdintf::org_freedesktop_dbus::ObjectManager;
+
+#[derive(Debug)]
+pub enum IonModemCliError {
+    ModemError(String),
+    ConnectionError(String),
+    MethodCallError(String),
+    SendError(String),
+    ResponseError(String),
+}
+
+impl std::fmt::Display for IonModemCliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IonModemCliError::ModemError(msg) => write!(f, "Modem Error: {}", msg),
+            IonModemCliError::ConnectionError(msg) => write!(f, "Connection Error: {}", msg),
+            IonModemCliError::MethodCallError(msg) => write!(f, "Method Call Error: {}", msg),
+            IonModemCliError::SendError(msg) => write!(f, "Send Error: {}", msg),
+            IonModemCliError::ResponseError(msg) => write!(f, "Response Error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for IonModemCliError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IonModemCli {
@@ -39,28 +59,40 @@ impl IonModemCli {
         }
     }
 
-    fn modem_preparing(&mut self) -> bool {
+    fn modem_preparing(&mut self) -> Result<(), IonModemCliError> {
         match self.modem_path_detection() {
             Ok(_modempath) => {
                 self.modem = _modempath;
-                return true;
+                Ok(())
             }
-            _ => {return false}
+            Err(e) => {
+                info!("Modem preparation failed: {:?}", e);
+                Err(IonModemCliError::ModemError(format!("Failed to prepare modem: {:?}", e)))
+            }
         }
     }
 
-    fn get_modem_properties(&self, object: &str, prop: &str) -> Result<Vec<MessageItem>, Box<dyn Error>> {
+    fn get_modem_properties(&self, object: &str, prop: &str) -> Result<Vec<MessageItem>, IonModemCliError> {
+        // Check if self.modem is empty
+        if self.modem.is_empty() {
+            return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+        }
+        
         // Connect to the system bus
-        let conn = Connection::new_system()?;
-
+        let conn = Connection::new_system()
+            .map_err(|e| IonModemCliError::ConnectionError(format!("Failed to connect to system bus: {}", e)))?;
+    
         let interface = "org.freedesktop.DBus.Properties";
-
-        // Prepare the D-Bus message to get the Enabled property
-        let msg = Message::new_method_call(&self.destination, &self.modem, interface, "Get")?
+    
+        // Prepare the D-Bus message to get the property
+        let msg = Message::new_method_call(&self.destination, &self.modem, interface, "Get")
+            .map_err(|e| IonModemCliError::MethodCallError(format!("Failed to create method call: {}", e)))?
             .append2(object, prop);
-
+    
         // Send the message and await the response
-        let reply = conn.send_with_reply_and_block(msg, Duration::from_secs(2))?;
+        let reply = conn.send_with_reply_and_block(msg, Duration::from_secs(2))
+            .map_err(|e| IonModemCliError::SendError(format!("Failed to send message: {}", e)))?;
+    
         trace!("{:?}", reply);
         let enabled_variant = reply.get_items();
         trace!("{:?}", enabled_variant);
@@ -68,27 +100,25 @@ impl IonModemCli {
         Ok(enabled_variant)
     }
 
-    fn modem_path_detection(&self) -> Result<String, Box<dyn Error>> {
-        // Initialize modempath as an empty string
-        let mut modempath: String = String::new();
-
+    fn modem_path_detection(&self) -> Result<String, IonModemCliError> {
         // Connect to the D-Bus system bus
-        let connection = Connection::new_system()?;
+        let connection = Connection::new_system()
+            .map_err(|e| IonModemCliError::ConnectionError(format!("Failed to connect to system bus: {}", e)))?;
 
         // Get managed objects
-        let proxy: Proxy<&Connection> = connection.with_proxy(&self.destination, &self.object, Duration::from_millis(5000));
+        let proxy = connection.with_proxy(&self.destination, &self.object, Duration::from_millis(5000));
         let managed_objects: HashMap<dbus::Path<'_>, HashMap<String, HashMap<String, dbus::arg::Variant<Box<dyn RefArg>>>>>
-            = proxy.get_managed_objects()?;
+            = proxy.get_managed_objects()
+                .map_err(|e| IonModemCliError::MethodCallError(format!("Failed to get managed objects: {}", e)))?;
 
         // Iterate over the managed objects and find the modem objects
         for (path, interfaces) in managed_objects {
             if interfaces.contains_key("org.freedesktop.ModemManager1.Modem") {
-                modempath = path.to_string();
-                break; // Stop after finding the first modem
+                return Ok(path.to_string());
             }
         }
 
-        Ok(modempath)
+        Err(IonModemCliError::ModemError("No modem object found".to_owned()))
     }
 
     pub fn is_location_enabled(&self) -> bool {
@@ -96,17 +126,17 @@ impl IonModemCli {
             Ok(results) => {
                 for result in results.iter() {
                     trace!("{:?}", result);
-                    match result {
-                        MessageItem::Variant(ret_variant) => {
-                            let MessageItem::UInt32(locationmask) = **ret_variant else { return false };
+                    if let MessageItem::Variant(ret_variant) = result {
+                        if let MessageItem::UInt32(locationmask) = **ret_variant {
                             trace!("Mask: {}", locationmask);
                             return (locationmask & 4) != 0;
-                        },
-                        _ => {return false}
+                        }
                     }
                 }
             }
-            _ => {return false}
+            Err(e) => {
+                info!("Failed to get location enabled state: {:?}", e);
+            }
         }
         false
     }
@@ -116,23 +146,22 @@ impl IonModemCli {
             Ok(results) => {
                 for result in results.iter() {
                     trace!("{:?}", result);
-                    match result {
-                        MessageItem::Variant(ret_variant) => {
-                            let MessageItem::Int32(modemmask) = **ret_variant else { return false };
+                    if let MessageItem::Variant(ret_variant) = result {
+                        if let MessageItem::Int32(modemmask) = **ret_variant {
                             return (modemmask & 8) != 0;
-                        },
-                        _ => {return false}
+                        }
                     }
                 }
             }
-            _ => {return false}
+            Err(e) => {
+                info!("Failed to get modem enabled state: {:?}", e);
+            }
         }
-
         false
     }
 
     pub fn get_signal_quality(&self) -> u32 {
-        // self.get_modem_properties("org.freedesktop.ModemManager1.Modem", "SignalQuality")
+        // Placeholder method, implement based on your actual requirements
         0
     }
 
@@ -140,49 +169,42 @@ impl IonModemCli {
         match self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Signal", "Lte") {
             Ok(results) => {
                 for result in results.iter() {
-                    match result {
-                        MessageItem::Variant(ret_variant) => {
-                            if let MessageItem::Dict(ref dict) = **ret_variant {
-                                let a = dict.to_vec();
-                                for (x, y) in a {
-                                    if x == "rsrp".into() {
-                                        match y {
-                                            MessageItem::Variant(rsrpval) => {
-                                                let MessageItem::Double(rsrpret) = *rsrpval else { return 0.0 };
-                                                return rsrpret as f32;
-                                            }
-                                            _ => {return 0.0}
+                    if let MessageItem::Variant(ret_variant) = result {
+                        if let MessageItem::Dict(ref dict) = **ret_variant {
+                            let a = dict.to_vec();
+                            for (x, y) in a {
+                                if x == "rsrp".into() {
+                                    if let MessageItem::Variant(rsrpval) = y {
+                                        if let MessageItem::Double(rsrpret) = *rsrpval {
+                                            return rsrpret as f32;
                                         }
                                     }
                                 }
                             }
-        
-                        },
-                        _ => { return 0.0}
+                        }
                     }
                 }
             }
-            _ => {}
+            Err(e) => {
+                info!("Failed to get signal strength: {:?}", e);
+            }
         }
-
         0.0
     }
 
     pub fn get_location(&self) -> String {
-        let mut nmea_str: String = String::new();
+        let mut nmea_str = String::new();
         if self.is_location_enabled() {
             // Connect to the system bus
             let c = Connection::new_system().expect("D-Bus connection failed");
 
             // Specify the interface and method to call for getting location
             let interface = "org.freedesktop.ModemManager1.Modem.Location";
-
-            // Prepare the D-Bus message
             let gpsmethod = "GetLocation";
 
-            let msg =
-                Message::new_method_call(&self.destination, &self.modem, interface, gpsmethod)
-                    .expect("Failed to create method call");
+            // Prepare the D-Bus message
+            let msg = Message::new_method_call(&self.destination, &self.modem, interface, gpsmethod)
+                .expect("Failed to create method call");
 
             // Send the message and await the response
             let reply = c.send_with_reply_and_block(msg, Duration::from_secs(2));
@@ -207,9 +229,10 @@ impl IonModemCli {
                         }
                     }
                 }
-                _ => {}
+                Err(e) => {
+                    info!("Failed to get location: {:?}", e);
+                }
             }
-
         }
 
         nmea_str
@@ -220,41 +243,61 @@ impl IonModemCli {
     }
 
     pub fn waiting_for_ready(&mut self) -> bool {
-        if !self.ready && self.modem_preparing() {
+        if !self.ready {
+            if let Err(err) = self.modem_preparing() {
+                info!("Failed to prepare modem: {}", err);
+                return false;
+            }
             self.ready = true;
         }
         self.ready
     }
 
-    pub fn setup_modem_enable(&self, status: bool) -> Result<(), Box<dyn Error>> {
+    pub fn setup_modem_enable(&self, status: bool) -> Result<(), IonModemCliError> {
+        // Check if self.modem is empty
+        if self.modem.is_empty() {
+            return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+        }
+
         let interface = "org.freedesktop.ModemManager1.Modem";
         let method = "Enable";
-        let connection: Connection = Connection::new_system()?;
-
+        let connection = Connection::new_system()
+            .map_err(|e| IonModemCliError::ConnectionError(format!("Failed to connect to system bus: {}", e)))?;
+    
         // Prepare the D-Bus message to enable the modem
-        let msg = Message::new_method_call("org.freedesktop.ModemManager1", &self.modem, interface, method)?.append1(status);
-
+        let msg = Message::new_method_call("org.freedesktop.ModemManager1", &self.modem, interface, method)
+            .map_err(|e| IonModemCliError::MethodCallError(format!("Failed to create method call: {}", e)))?
+            .append1(status);
+    
         // Send the message and handle the response
-        let _ = connection.send_with_reply_and_block(msg, Duration::from_millis(2000))?;
-
+        connection.send_with_reply_and_block(msg, Duration::from_millis(2000))
+            .map_err(|e| IonModemCliError::SendError(format!("Failed to send message: {}", e)))?;
+    
         Ok(())
     }
 
-    pub fn setup_location(&self, sources: u32, signal_location: bool) -> Result<(), Box<dyn Error>> {
+    pub fn setup_location(&self, sources: u32, signal_location: bool) -> Result<(), IonModemCliError> {
+        // Check if self.modem is empty
+        if self.modem.is_empty() {
+            return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+        }
+
         let interface = "org.freedesktop.ModemManager1.Modem.Location";
         let method = "Setup";
-        let connection: Connection = Connection::new_system()?;
-
+    
+        // Connect to the system bus
+        let connection = Connection::new_system()
+            .map_err(|e| IonModemCliError::ConnectionError(format!("Failed to connect to system bus: {}", e)))?;
+    
         // Prepare the D-Bus message to setup location
-        let msg = Message::new_method_call("org.freedesktop.ModemManager1", &self.modem, interface, method)?.append2(sources, signal_location);
-
-        // Append arguments to the method call
-        
-
+        let msg = Message::new_method_call("org.freedesktop.ModemManager1", &self.modem, interface, method)
+            .map_err(|e| IonModemCliError::MethodCallError(format!("Failed to create method call: {}", e)))?
+            .append2(sources, signal_location);
+    
         // Send the message and handle the response
-        let _ = connection.send_with_reply_and_block(msg, Duration::from_millis(2000))?;
-
+        connection.send_with_reply_and_block(msg, Duration::from_millis(2000))
+            .map_err(|e| IonModemCliError::SendError(format!("Failed to send message: {}", e)))?;
+    
         Ok(())
     }
-
 }
