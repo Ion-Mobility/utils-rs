@@ -1,12 +1,6 @@
 use log::LevelFilter;
 use log4rs::{
     append::console::ConsoleAppender,
-    append::rolling_file::{
-        policy::compound::{
-            roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy,
-        },
-        RollingFileAppender,
-    },
     config::{Appender, Config, Logger, Root},
     encode::pattern::PatternEncoder,
 };
