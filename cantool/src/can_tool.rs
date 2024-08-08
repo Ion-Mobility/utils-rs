@@ -154,8 +154,8 @@ impl CanUtils {
         }
     }
 
-    pub fn get_signals(&mut self) -> Result<HashMap<String, f32>, Box<dyn Error>> {
-        let mut result = HashMap::new();
+    pub fn get_signals(&mut self) -> Result<HashMap<&str, f32>, Box<dyn Error>> {
+        let mut result: HashMap<&str, f32> = HashMap::new();
 
         match self.socket_can.read_frame() {
             Ok(frame) => {
@@ -176,7 +176,7 @@ impl CanUtils {
                             };
 
                             if let Some(value) = signal_info.parse_message(can_msg_data) {
-                                result.insert(signal.to_string(), value);
+                                result.insert(signal, value);
                             }
                         }
                     }
@@ -185,6 +185,7 @@ impl CanUtils {
             Err(e) => {
                 log::error!("Failed to read CAN frame: {:?}", e);
                 log::info!("Attempting to reopen CanSocket...");
+                std::thread::sleep(std::time::Duration::from_millis(100));
 
                 // Attempt to reopen the CanSocket
                 match CanSocket::open(&self.canport) {
