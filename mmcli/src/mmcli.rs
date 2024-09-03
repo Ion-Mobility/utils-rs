@@ -260,6 +260,7 @@ impl IonModemCli {
             let now = Instant::now();
             if now.duration_since(self.last_check) >= self.check_interval {
                 info!("Recheck modem every {:?} Seconds", self.check_interval);
+                self.last_check = now;
                 match self.modem_path_detection() {
                     Ok(_modempath) => {
                         if self.modem != _modempath {
