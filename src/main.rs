@@ -35,7 +35,7 @@ fn main() {
             Ok(signals) => {
                 info!("CAN Signal: {:?}", signals);
                 for (signal, value) in signals {
-                    match signal.as_str() {
+                    match signal {
                         "ble_cellular" => {
                             vehicle_cell_enable = value != 0.0;
                             trace!("Cellular: {}", vehicle_cell_enable);

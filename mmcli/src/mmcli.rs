@@ -1,11 +1,12 @@
 use dbus::{blocking::Connection, Message};
 use dbus::arg::RefArg;
-use std::time::Duration;
-use std::collections::HashMap;
-use log::{trace, info};
 use dbus::arg::messageitem::MessageItem;
 use dbus::blocking::BlockingSender;
 use dbus::blocking::stdintf::org_freedesktop_dbus::ObjectManager;
+
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+use log::{trace, info, warn};
 
 #[derive(Debug)]
 pub enum IonModemCliError {
@@ -36,6 +37,8 @@ pub struct IonModemCli {
     object: String,
     modem: String,
     ready: bool,
+    last_check: Instant, // Field to track the last check time
+    check_interval: Duration, // Duration between checks
 }
 
 impl Default for IonModemCli {
@@ -45,17 +48,21 @@ impl Default for IonModemCli {
             object: "/org/freedesktop/ModemManager1".to_owned(),
             modem: String::new(),
             ready: false,
+            last_check: Instant::now(),
+            check_interval: Duration::from_secs(10),
         }
     }
 }
 
 impl IonModemCli {
-    pub fn new(destination: String, object: String, modem: String, ready: bool) -> Self {
+    pub fn new(destination: String, object: String, modem: String) -> Self {
         IonModemCli {
             destination,
             object,
             modem,
-            ready,
+            ready: false,
+            last_check: Instant::now(),
+            check_interval: Duration::from_secs(10),
         }
     }
 
@@ -249,6 +256,28 @@ impl IonModemCli {
                 return false;
             }
             self.ready = true;
+        } else {
+            let now = Instant::now();
+            if now.duration_since(self.last_check) >= self.check_interval {
+                info!("Recheck modem every {:?} Seconds", self.check_interval);
+                match self.modem_path_detection() {
+                    Ok(_modempath) => {
+                        if self.modem != _modempath {
+                            warn!("Modem already changed, need to reinit everything");
+                            self.ready = false;
+                            self.modem = _modempath;
+                        } else {
+                            info!("Modem hasn't changed!");
+                            self.ready = true;
+                        }
+                    }
+                    Err(e) => {
+                        info!("Modem preparation failed: {:?}", e);
+                        self.ready = false;
+                        self.modem = "".to_string();
+                    }
+                }
+            }
         }
         self.ready
     }
