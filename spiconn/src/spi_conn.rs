@@ -29,7 +29,39 @@ impl IonSpiConn {
 
         IonSpiConn { spidev, ready }
     }
-
+    pub fn hexdump(&mut self, data: &[u8], len: usize) {
+        // Ensure the length doesn't exceed the actual data size
+        let len = len.min(data.len());
+    
+        for (i, chunk) in data[..len].chunks(16).enumerate() {
+            // Print the offset
+            print!("{:08x}: ", i * 16);
+    
+            // Print each byte in hex
+            for byte in chunk {
+                print!("{:02x} ", byte);
+            }
+    
+            // Print spacing for incomplete chunks
+            if chunk.len() < 16 {
+                for _ in 0..(16 - chunk.len()) {
+                    print!("   ");
+                }
+            }
+    
+            // Print the ASCII representation
+            print!("|");
+            for byte in chunk {
+                let ascii_char = if byte.is_ascii_graphic() || *byte == b' ' {
+                    *byte as char
+                } else {
+                    '.'
+                };
+                print!("{}", ascii_char);
+            }
+            println!("|");
+        }
+    }
     pub async fn xfer(&mut self, tx_buf: &[u8]) -> io::Result<Vec<u8>> {
         let mut rx_buf = Vec::with_capacity(tx_buf.len());
 
@@ -37,7 +69,6 @@ impl IonSpiConn {
             // Check if the ready line (first line) is high
             match self.ready.get_values([true;1]).await {
                 Ok(_value) => {
-                    println!("Rdy status {:?}", _value);
                     if _value[0] == true {
                         for &byte in tx_buf {
                             let tx_buf_single = [byte];
@@ -48,6 +79,7 @@ impl IonSpiConn {
                 
                             rx_buf.push(rx_buf_single[0]); // Collect received byte
                         }
+                        self.hexdump(&rx_buf, rx_buf[0] as usize);
                         break;
                     }
                 }

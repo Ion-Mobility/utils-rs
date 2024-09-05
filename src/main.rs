@@ -13,12 +13,12 @@ async fn main() -> io::Result<()> {
     let mut spi_conn = IonSpiConn::new_async("/dev/spidev1.0", 29).await;
 
     // Example data to send over SPI
-    let tx_data = [0xAA; 32];
+    let tx_data = [0xAA; 130];
 
     // Perform the SPI transfer and handle the result
     match spi_conn.xfer(&tx_data).await {
         Ok(rx_data) => {
-            println!("Received data: {:?}", rx_data);
+            // println!("Received data: {:?}", rx_data);
         }
         Err(e) => {
             eprintln!("SPI transfer failed: {:?}", e);
