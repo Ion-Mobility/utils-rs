@@ -1,0 +1,9 @@
+[package]
+name = "spiconn"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+spidev = "0.6.0"
+tokio = { version = "1.40.0", features = ["full"] }
+tokio-gpiod = "0.3.0"

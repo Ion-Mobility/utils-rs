@@ -13,3 +13,5 @@ log = "0.4.20"
 mmcli = { path = "mmcli" }
 cantool = { path = "cantool" }
 logging = { path = "logging" }
+spiconn = { path = "spiconn" }
+tokio = { version = "1.40.0", features = ["full"] }
