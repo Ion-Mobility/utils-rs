@@ -6,24 +6,40 @@ use cantool::can_tool::CanUtils; // Assuming CanUtils is imported from cantool c
 use logging::logging::MyLogging; // Assuming MyLogging is imported from logging crate
 use spiconn::spi_conn::*;
 use tokio::io;
-
+use wifitools::{scan_wifi, get_stored_wifi};
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    // Initialize IonSpiConn asynchronously
-    let mut spi_conn = IonSpiConn::new_async("/dev/spidev1.0", 29).await;
-
-    // Example data to send over SPI
-    let tx_data = [0xAA; 130];
-
-    // Perform the SPI transfer and handle the result
-    match spi_conn.xfer(&tx_data).await {
-        Ok(rx_data) => {
-            // println!("Received data: {:?}", rx_data);
+    match scan_wifi("wlp0s20f3").await {
+        Ok(results) => {
+            println!("{:?}", results);
         }
         Err(e) => {
-            eprintln!("SPI transfer failed: {:?}", e);
+
         }
     }
+    match get_stored_wifi().await {
+        Ok(results) => {
+            println!("{:?}", results);
+        }
+        Err(e) => {
+
+        }
+    }
+    // // Initialize IonSpiConn asynchronously
+    // let mut spi_conn = IonSpiConn::new_async("/dev/spidev1.0", 29).await;
+
+    // // Example data to send over SPI
+    // let tx_data = [0xAA; 130];
+
+    // // Perform the SPI transfer and handle the result
+    // match spi_conn.xfer(&tx_data).await {
+    //     Ok(rx_data) => {
+    //         // println!("Received data: {:?}", rx_data);
+    //     }
+    //     Err(e) => {
+    //         eprintln!("SPI transfer failed: {:?}", e);
+    //     }
+    // }
 
     Ok(())
 }
