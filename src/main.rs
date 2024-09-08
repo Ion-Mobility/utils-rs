@@ -7,8 +7,7 @@ use logging::logging::MyLogging; // Assuming MyLogging is imported from logging 
 use spiconn::spi_conn::*;
 use tokio::io;
 use wifitools::{scan_wifi, get_stored_wifi};
-use icomconn::*;
-
+use icomconn::icom_conn::IONICOMPacketType;
 #[tokio::main]
 async fn main() -> io::Result<()> {
     // Initialize IonSpiConn asynchronously
