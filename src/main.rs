@@ -17,7 +17,7 @@ async fn main() -> io::Result<()> {
         let tx_data = [0xAA; 128];
         let txbuf = IONICOMPacketType::new_from(tx_data.to_vec());
         // Perform the SPI transfer and handle the result
-        match spi_conn.xfer(&txbuf.to_byte_array()).await {
+        match spi_conn.expect("REASON").xfer(&txbuf.to_byte_array()).await {
             Ok(rx_data) => {
                 // println!("Received data: {:?}", rx_data);
                 match IONICOMPacketType::from_byte_array(rx_data) {
