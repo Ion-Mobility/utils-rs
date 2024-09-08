@@ -10,7 +10,7 @@ pub struct IonSpiConn {
 
 impl IonSpiConn {
     pub async fn new_async(spidevpath: &str, ready_pin: u32) -> Result<Self, io::Error> {
-        let mut spidev = Spidev::open(&spidevpath)?;
+        let mut spidev = Spidev::open(spidevpath)?;
 
         let options = SpidevOptions::new()
             .bits_per_word(8)
@@ -31,7 +31,7 @@ impl IonSpiConn {
         Ok(IonSpiConn { spidev, ready })
     }
 
-    pub fn hexdump(&mut self, data: &[u8], len: usize) {
+    pub fn hexdump(&self, data: &[u8], len: usize) {
         // Ensure the length doesn't exceed the actual data size
         let len = len.min(data.len());
     
@@ -69,10 +69,10 @@ impl IonSpiConn {
         let mut rx_buf = Vec::with_capacity(tx_buf.len());
 
         loop {
-            // Check if the ready line (first line) is high
+            // Check if the ready line is high
             match self.ready.get_values([true; 1]).await {
-                Ok(_value) => {
-                    if _value[0] == true {
+                Ok(value) => {
+                    if value[0] {
                         for &byte in tx_buf {
                             let tx_buf_single = [byte];
                             let mut rx_buf_single = [0];
@@ -86,8 +86,8 @@ impl IonSpiConn {
                         break;
                     }
                 }
-                Err(_) => {
-                    // Handle the error or continue
+                Err(e) => {
+                    eprintln!("Failed to get GPIO values: {:?}", e);
                 }
             }
             sleep(Duration::from_millis(100)).await;
