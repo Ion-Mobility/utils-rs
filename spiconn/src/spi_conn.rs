@@ -79,7 +79,7 @@ impl IonSpiConn {
                 
                             rx_buf.push(rx_buf_single[0]); // Collect received byte
                         }
-                        self.hexdump(&rx_buf, rx_buf[0] as usize);
+                        self.hexdump(&rx_buf, rx_buf.len() as usize);
                         break;
                     }
                 }
