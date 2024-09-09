@@ -94,6 +94,15 @@ impl IONICOMPacketType {
         buffer
     }
 
+    pub fn payload_to_array(&self) -> [u8; 128] {
+        let mut buffer = [0u8; 128];
+
+        // Next 128 bytes are the payload
+        buffer[0..128].copy_from_slice(&self.Payload);
+        
+        buffer
+    }
+    
     // Converts a byte array (Vec<u8>) back to IONICOMPacketType
     pub fn from_byte_array(rxdata: Vec<u8>) -> Result<Self, Box<dyn Error>> {
         if rxdata.len() != 130 {
