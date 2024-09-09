@@ -60,6 +60,24 @@ impl IONICOMPacketType {
             Crc: crc,
         }
     }
+    
+    pub fn new_dummy() -> Self {
+        let payload = [0u8; 128]; // Create a payload with all zeros
+        let payload_len = payload.len() as u8;
+
+        // Create a buffer with PayloadLen and Payload for CRC calculation
+        let mut crc_buffer = Vec::with_capacity(1 + payload.len());
+        crc_buffer.push(payload_len); // Add PayloadLen to the buffer
+        crc_buffer.extend_from_slice(&payload); // Add Payload to the buffer
+
+        let crc = crc8(&crc_buffer); // Calculate CRC on both PayloadLen and Payload
+
+        IONICOMPacketType {
+            PayloadLen: payload_len,
+            Payload: payload,
+            Crc: crc,
+        }
+    }
 
     pub fn to_byte_array(&self) -> [u8; 130] {
         let mut buffer = [0u8; 130];
@@ -76,6 +94,15 @@ impl IONICOMPacketType {
         buffer
     }
 
+    pub fn payload_to_array(&self) -> [u8; 128] {
+        let mut buffer = [0u8; 128];
+
+        // Next 128 bytes are the payload
+        buffer[0..128].copy_from_slice(&self.Payload);
+        
+        buffer
+    }
+    
     // Converts a byte array (Vec<u8>) back to IONICOMPacketType
     pub fn from_byte_array(rxdata: Vec<u8>) -> Result<Self, Box<dyn Error>> {
         if rxdata.len() != 130 {

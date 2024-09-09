@@ -2,14 +2,50 @@ use spidev::{Spidev, SpidevOptions, SpidevTransfer, SpiModeFlags};
 use tokio_gpiod::{Chip, Active, Input, Lines, Options};
 use std::io;
 use tokio::time::{sleep, Duration};
+use std::fmt;
+use std::error::Error as StdError;
+
+#[derive(Debug)]
+pub enum IonSpiConnError {
+    IoError(io::Error),
+    GpioError(String), // Use a String for GPIO errors
+    PacketError(Box<dyn StdError + Send>), // Boxed error with Send
+}
+
+impl fmt::Display for IonSpiConnError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl StdError for IonSpiConnError {}
+
+impl From<io::Error> for IonSpiConnError {
+    fn from(err: io::Error) -> IonSpiConnError {
+        IonSpiConnError::IoError(err)
+    }
+}
+
+impl From<String> for IonSpiConnError {
+    fn from(err: String) -> IonSpiConnError {
+        IonSpiConnError::GpioError(err)
+    }
+}
+
+impl From<Box<dyn StdError + Send>> for IonSpiConnError {
+    fn from(err: Box<dyn StdError + Send>) -> IonSpiConnError {
+        IonSpiConnError::PacketError(err)
+    }
+}
+
 pub struct IonSpiConn {
     spidev: Spidev,
     ready: Lines<Input>, // Correct type for GPIO lines
 }
 
 impl IonSpiConn {
-    pub async fn new_async(spidevpath: &str, ready_pin: u32) -> Self {
-        let mut spidev = Spidev::open(&spidevpath).expect("Failed to open SPI device");
+    pub async fn new_async(spidevpath: &str, ready_pin: u32) -> Result<Self, IonSpiConnError> {
+        let mut spidev = Spidev::open(&spidevpath).map_err(IonSpiConnError::from)?;
 
         let options = SpidevOptions::new()
             .bits_per_word(8)
@@ -17,19 +53,20 @@ impl IonSpiConn {
             .mode(SpiModeFlags::SPI_MODE_1)
             .build();
 
-        spidev.configure(&options).expect("Failed to configure SPI device");
+        spidev.configure(&options).map_err(IonSpiConnError::from)?;
 
-        let chip = Chip::new("gpiochip0").await.expect("Failed to open GPIO chip");
+        let chip = Chip::new("gpiochip0").await.map_err(|e| IonSpiConnError::from(e.to_string()))?;
 
-        let opts = Options::input([ready_pin]) // Configure GPIO pin
+        let opts = Options::input([ready_pin])
             .active(Active::High)
-            .consumer("spi-rdy"); // Set consumer label
+            .consumer("spi-rdy");
     
-        let ready = chip.request_lines(opts).await.expect("Failed to request GPIO lines");
+        let ready = chip.request_lines(opts).await.map_err(|e| IonSpiConnError::from(e.to_string()))?;
 
-        IonSpiConn { spidev, ready }
+        Ok(IonSpiConn { spidev, ready })
     }
-    pub fn hexdump(&mut self, data: &[u8], len: usize) {
+
+    pub fn hexdump(&self, data: &[u8], len: usize) {
         // Ensure the length doesn't exceed the actual data size
         let len = len.min(data.len());
     
@@ -62,12 +99,12 @@ impl IonSpiConn {
             println!("|");
         }
     }
-    pub async fn xfer(&mut self, tx_buf: &[u8]) -> io::Result<Vec<u8>> {
+
+    pub async fn xfer(&mut self, tx_buf: &[u8]) -> Result<Vec<u8>, IonSpiConnError> {
         let mut rx_buf = Vec::with_capacity(tx_buf.len());
 
         loop {
-            // Check if the ready line (first line) is high
-            match self.ready.get_values([true;1]).await {
+            match self.ready.get_values([true; 1]).await.map_err(|e| IonSpiConnError::from(e.to_string())) {
                 Ok(_value) => {
                     if _value[0] == true {
                         for &byte in tx_buf {
@@ -75,16 +112,16 @@ impl IonSpiConn {
                             let mut rx_buf_single = [0];
                 
                             let mut transfer = SpidevTransfer::read_write(&tx_buf_single, &mut rx_buf_single);
-                            self.spidev.transfer(&mut transfer)?;
+                            self.spidev.transfer(&mut transfer).map_err(IonSpiConnError::from)?;
                 
-                            rx_buf.push(rx_buf_single[0]); // Collect received byte
+                            rx_buf.push(rx_buf_single[0]);
                         }
                         self.hexdump(&rx_buf, rx_buf.len() as usize);
                         break;
                     }
                 }
-                Err(_) => {
-
+                Err(e) => {
+                    return Err(e);
                 }
             }
             sleep(Duration::from_millis(100)).await;

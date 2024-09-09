@@ -1,8 +1,8 @@
 use rusty_network_manager::{SettingsProxy, AccessPointProxy, NetworkManagerProxy, WirelessProxy, SettingsConnectionProxy};
 use zbus::zvariant::{OwnedValue, Value as ZValue};
-use zbus::Connection;
 use std::{collections::HashMap, str::FromStr};
 use tokio::time::{sleep, Duration};
+use zbus::{Connection, Proxy};
 
 #[derive(Debug)]
 pub struct WifiInfo {
@@ -17,6 +17,41 @@ pub struct WifiStoredInfo {
     created: String,
     security: String,
     psk: String,
+}
+
+pub async fn get_wificmd_pack() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // Create a connection to the system bus
+    let connection = Connection::system().await?;
+
+    // Create a proxy for interacting with the D-Bus service
+    let proxy = Proxy::new(
+        &connection,
+        "org.ion.IComGateway",           // D-Bus destination (service name)
+        "/org/ion/IComGateway",          // Object path
+        "org.ion.IComGateway" // Introspection interface
+    ).await?;
+
+    // Call the `Introspect` method to retrieve introspection XML
+    let received_pack: Vec<u8> = proxy.call("GetLatestReceived", &()).await?;
+    Ok(received_pack)
+}
+
+pub async fn send_wificmd_pack(send_pack: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+    // Create a connection to the system bus
+    let connection = Connection::system().await?;
+
+    // Create a proxy for interacting with the D-Bus service
+    let proxy = Proxy::new(
+        &connection,
+        "org.ion.IComGateway",           // D-Bus destination (service name)
+        "/org/ion/IComGateway",          // Object path
+        "org.ion.IComGateway" // Introspection interface
+    ).await?;
+
+    let _ = proxy.call("SendPackg", &(send_pack)).await?;
+    println!("Received: {:?}", send_pack);
+    
+    Ok(())
 }
 
 pub async fn scan_wifi(interface: &str) -> Result<HashMap<String, WifiInfo>, Box<dyn std::error::Error>> {
