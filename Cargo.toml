@@ -15,5 +15,5 @@ cantool = { path = "cantool" }
 logging = { path = "logging" }
 spiconn = { path = "spiconn" }
 wifitools = { path = "wifitools" }
-icomconn = { path = "icomconn" }
+icommsg = { path = "icommsg" }
 tokio = { version = "1.40.0", features = ["full"] }

@@ -6,7 +6,7 @@ use spiconn::spi_conn::*;
 use tokio::io;
 use tokio::time::{sleep, Duration};
 use wifitools::{scan_wifi, get_stored_wifi, get_wificmd_pack, send_wificmd_pack};
-use icomconn::icom_conn::IONICOMPacketType;
+use icommsg::icom_msg::IONICOMPacketType;
 #[tokio::main]
 async fn main() -> io::Result<()> {
     loop {
