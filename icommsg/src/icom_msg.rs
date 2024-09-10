@@ -4,11 +4,10 @@ const ICOM_MSG_PAYLOAD_MAX_LEN: usize = 256;
 const ICOM_MSG_MAX_LEN: usize = 258;
 
 #[derive(Debug, Clone)]
-pub struct IONICOMPacketType
-{
-	PayloadLen: u8,
-	Payload: [u8; ICOM_MSG_PAYLOAD_MAX_LEN],
-	Crc: u8,
+pub struct IONICOMPacketType {
+    PayloadLen: u16, // Changed to u16
+    Payload: [u8; ICOM_MSG_PAYLOAD_MAX_LEN],
+    Crc: u8,
 }
 
 const CRC_TABLE: [u8; 256] = [
@@ -36,6 +35,7 @@ const CRC_TABLE: [u8; 256] = [
     0xFA, 0xFD, 0xF4, 0xF3,
 ];
 
+
 fn crc8(msg: &[u8]) -> u8 {
     let mut crc: u8 = 0;
 
@@ -51,13 +51,15 @@ impl IONICOMPacketType {
         let mut payload = [0u8; ICOM_MSG_PAYLOAD_MAX_LEN];
         payload[..txdata.len()].copy_from_slice(&txdata);
     
-        let payload_len = txdata.len() as u8;
+        let payload_len = txdata.len() as u16;
+        
         // Create a buffer with PayloadLen and Payload for CRC calculation
-        let mut crc_buffer = Vec::with_capacity(1 + txdata.len());
-        crc_buffer.push(payload_len); // Add PayloadLen to the buffer
+        let mut crc_buffer = Vec::with_capacity(2 + txdata.len()); // Adjust capacity for u16 (2 bytes)
+        crc_buffer.push((payload_len & 0xFF) as u8); // Low byte of u16
+        crc_buffer.push((payload_len >> 8) as u8);   // High byte of u16
         crc_buffer.extend_from_slice(&payload); // Add Payload to the buffer
 
-        let crc = crc8(&crc_buffer); // Calculate CRC on both PayloadLen and Payload
+        let crc = crc8(&crc_buffer); // Calculate CRC on PayloadLen and Payload
             
         IONICOMPacketType {
             PayloadLen: payload_len,
@@ -81,14 +83,15 @@ impl IONICOMPacketType {
     pub fn to_byte_array(&self) -> [u8; ICOM_MSG_MAX_LEN] {
         let mut buffer = [0u8; ICOM_MSG_MAX_LEN];
         
-        // First byte is the payload length
-        buffer[0] = self.PayloadLen;
+        // First two bytes are the payload length (u16)
+        buffer[0] = (self.PayloadLen & 0xFF) as u8;  // Low byte
+        buffer[1] = (self.PayloadLen >> 8) as u8;    // High byte
         
         // Next ICOM_MSG_PAYLOAD_MAX_LEN bytes are the payload
-        buffer[1..ICOM_MSG_PAYLOAD_MAX_LEN+1].copy_from_slice(&self.Payload);
+        buffer[2..ICOM_MSG_PAYLOAD_MAX_LEN+2].copy_from_slice(&self.Payload);
         
         // Last byte is the CRC
-        buffer[ICOM_MSG_PAYLOAD_MAX_LEN+1] = self.Crc;
+        buffer[ICOM_MSG_PAYLOAD_MAX_LEN+2] = self.Crc;
 
         buffer
     }
@@ -96,8 +99,8 @@ impl IONICOMPacketType {
     pub fn payload_to_array(&self) -> [u8; ICOM_MSG_PAYLOAD_MAX_LEN] {
         let mut buffer = [0u8; ICOM_MSG_PAYLOAD_MAX_LEN];
 
-        // Next ICOM_MSG_PAYLOAD_MAX_LEN bytes are the payload
-        buffer[0..ICOM_MSG_PAYLOAD_MAX_LEN].copy_from_slice(&self.Payload);
+        // Copy the payload data
+        buffer.copy_from_slice(&self.Payload);
         
         buffer
     }
@@ -108,8 +111,8 @@ impl IONICOMPacketType {
             return Err("Invalid byte array length. Expected ICOM_MSG_MAX_LEN bytes.".into());
         }
 
-        // Extract PayloadLen
-        let payload_len = rxdata[0];
+        // Extract PayloadLen (u16)
+        let payload_len = u16::from_le_bytes([rxdata[0], rxdata[1]]);
         
         if payload_len == 0 {
             return Err("Dummy package received".into());
@@ -119,10 +122,10 @@ impl IONICOMPacketType {
 
         // Extract Payload
         let mut payload = [0u8; ICOM_MSG_PAYLOAD_MAX_LEN];
-        payload.copy_from_slice(&rxdata[1..ICOM_MSG_PAYLOAD_MAX_LEN+1]);
+        payload.copy_from_slice(&rxdata[2..ICOM_MSG_PAYLOAD_MAX_LEN+2]);
 
         // Extract CRC
-        let crc = rxdata[ICOM_MSG_PAYLOAD_MAX_LEN+1];
+        let crc = rxdata[ICOM_MSG_PAYLOAD_MAX_LEN+2];
 
         // Create IONICOMPacketType
         let packet = IONICOMPacketType {
@@ -144,8 +147,9 @@ impl IONICOMPacketType {
         if self.PayloadLen as usize > ICOM_MSG_PAYLOAD_MAX_LEN {
             return false;
         }
-        let mut crc_buffer = Vec::with_capacity(1 + self.PayloadLen as usize);
-        crc_buffer.push(self.PayloadLen); // Add PayloadLen to the buffer
+        let mut crc_buffer = Vec::with_capacity(2 + self.PayloadLen as usize);
+        crc_buffer.push((self.PayloadLen & 0xFF) as u8); // Low byte
+        crc_buffer.push((self.PayloadLen >> 8) as u8);   // High byte
         crc_buffer.extend_from_slice(&self.Payload[..self.PayloadLen as usize]); // Add actual payload data
 
         let computed_crc = crc8(&crc_buffer);
