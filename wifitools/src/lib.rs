@@ -40,7 +40,7 @@ pub async fn get_wificmd_pack() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     ).await?;
 
     // Call the `Introspect` method to retrieve introspection XML
-    let received_pack: Vec<u8> = proxy.call("GetLatestReceived", &()).await?;
+    let received_pack: Vec<u8> = proxy.call("GetLatestReceived", &(0u8)).await?;
     Ok(received_pack)
 }
 
