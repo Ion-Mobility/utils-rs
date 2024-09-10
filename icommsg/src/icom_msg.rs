@@ -63,14 +63,8 @@ impl IONICOMPacketType {
     
     pub fn new_dummy() -> Self {
         let payload = [0u8; 128]; // Create a payload with all zeros
-        let payload_len = payload.len() as u8;
-
-        // Create a buffer with PayloadLen and Payload for CRC calculation
-        let mut crc_buffer = Vec::with_capacity(1 + payload.len());
-        crc_buffer.push(payload_len); // Add PayloadLen to the buffer
-        crc_buffer.extend_from_slice(&payload); // Add Payload to the buffer
-
-        let crc = crc8(&crc_buffer); // Calculate CRC on both PayloadLen and Payload
+        let payload_len = 0;
+        let crc: u8 = 0;
 
         IONICOMPacketType {
             PayloadLen: payload_len,
@@ -111,6 +105,10 @@ impl IONICOMPacketType {
 
         // Extract PayloadLen
         let payload_len = rxdata[0];
+        
+        if payload_len == 0 {
+            return Err("Dummy package received".into());
+        }
 
         // Extract Payload
         let mut payload = [0u8; 128];
