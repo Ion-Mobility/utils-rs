@@ -1,11 +1,15 @@
-use std::error::Error;
+use std::{error::Error};
+
+const ICOM_MSG_PAYLOAD_MAX_LEN: usize = 128;
+
 #[derive(Debug, Clone)]
 pub struct IONICOMPacketType
 {
 	PayloadLen: u8,
-	Payload: [u8; 128],
+	Payload: [u8; ICOM_MSG_PAYLOAD_MAX_LEN],
 	Crc: u8,
 }
+
 const CRC_TABLE: [u8; 256] = [
     0x0,  0x7,  0xE,  0x9,  0x1C, 0x1B, 0x12, 0x15, 0x38, 0x3F, 0x36, 0x31,
     0x24, 0x23, 0x2A, 0x2D, 0x70, 0x77, 0x7E, 0x79, 0x6C, 0x6B, 0x62, 0x65,
@@ -43,7 +47,7 @@ fn crc8(msg: &[u8]) -> u8 {
 
 impl IONICOMPacketType {
     pub fn new_from(txdata: Vec<u8>) -> Self {
-        let mut payload = [0u8; 128];
+        let mut payload = [0u8; ICOM_MSG_PAYLOAD_MAX_LEN];
         payload[..txdata.len()].copy_from_slice(&txdata);
     
         let payload_len = txdata.len() as u8;
@@ -62,7 +66,7 @@ impl IONICOMPacketType {
     }
     
     pub fn new_dummy() -> Self {
-        let payload = [0u8; 128]; // Create a payload with all zeros
+        let payload = [0u8; ICOM_MSG_PAYLOAD_MAX_LEN]; // Create a payload with all zeros
         let payload_len = 0;
         let crc: u8 = 0;
 
@@ -79,7 +83,7 @@ impl IONICOMPacketType {
         // First byte is the payload length
         buffer[0] = self.PayloadLen;
         
-        // Next 128 bytes are the payload
+        // Next ICOM_MSG_PAYLOAD_MAX_LEN bytes are the payload
         buffer[1..129].copy_from_slice(&self.Payload);
         
         // Last byte is the CRC
@@ -88,11 +92,11 @@ impl IONICOMPacketType {
         buffer
     }
 
-    pub fn payload_to_array(&self) -> [u8; 128] {
-        let mut buffer = [0u8; 128];
+    pub fn payload_to_array(&self) -> [u8; ICOM_MSG_PAYLOAD_MAX_LEN] {
+        let mut buffer = [0u8; ICOM_MSG_PAYLOAD_MAX_LEN];
 
-        // Next 128 bytes are the payload
-        buffer[0..128].copy_from_slice(&self.Payload);
+        // Next ICOM_MSG_PAYLOAD_MAX_LEN bytes are the payload
+        buffer[0..ICOM_MSG_PAYLOAD_MAX_LEN].copy_from_slice(&self.Payload);
         
         buffer
     }
@@ -108,10 +112,12 @@ impl IONICOMPacketType {
         
         if payload_len == 0 {
             return Err("Dummy package received".into());
+        } else if payload_len as usize > ICOM_MSG_PAYLOAD_MAX_LEN {
+            return Err("Package corrupted".into());
         }
 
         // Extract Payload
-        let mut payload = [0u8; 128];
+        let mut payload = [0u8; ICOM_MSG_PAYLOAD_MAX_LEN];
         payload.copy_from_slice(&rxdata[1..129]);
 
         // Extract CRC
@@ -134,6 +140,9 @@ impl IONICOMPacketType {
 
     // Verifies the CRC for the current payload and payload length
     pub fn verify_crc(&self) -> bool {
+        if self.PayloadLen as usize > ICOM_MSG_PAYLOAD_MAX_LEN {
+            return false;
+        }
         let mut crc_buffer = Vec::with_capacity(1 + self.PayloadLen as usize);
         crc_buffer.push(self.PayloadLen); // Add PayloadLen to the buffer
         crc_buffer.extend_from_slice(&self.Payload[..self.PayloadLen as usize]); // Add actual payload data
