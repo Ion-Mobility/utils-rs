@@ -80,7 +80,7 @@ impl IONICOMPacketType {
             Crc: crc,
         }
     }
-    
+
     pub fn dump(&self) {
         println!("Payload Length: {}", self.PayloadLen);
         println!("CRC: 0x{:02X}", self.Crc);
@@ -111,6 +111,34 @@ impl IONICOMPacketType {
         // Extract the corresponding function slice
         let func_data = self.Payload[start..end].to_vec();
         Ok(func_data)
+    }
+    
+    pub fn set_func(&mut self, fncode: u8, data: Vec<u8>) -> Result<(), &'static str> {
+        let start = fncode as usize * ICOM_FN_MAX_LEN;
+        let end = start + data.len();
+
+        // Ensure that the data will fit within the payload
+        if end > ICOM_MSG_PAYLOAD_MAX_LEN || data.len() > ICOM_FN_MAX_LEN {
+            return Err("Data exceeds function or payload bounds");
+        }
+
+        // Insert the data into the correct portion of the payload
+        self.Payload[start..start + data.len()].copy_from_slice(&data);
+
+        // Update the payload length if necessary
+        let new_len = (start + data.len()) as u16;
+        if new_len > self.PayloadLen {
+            self.PayloadLen = new_len;
+        }
+
+        // Recalculate the CRC
+        let mut crc_buffer = Vec::with_capacity(2 + self.PayloadLen as usize);
+        crc_buffer.push((self.PayloadLen & 0xFF) as u8);  // Low byte
+        crc_buffer.push((self.PayloadLen >> 8) as u8);    // High byte
+        crc_buffer.extend_from_slice(&self.Payload[..self.PayloadLen as usize]);
+        self.Crc = crc8(&crc_buffer);
+
+        Ok(())
     }
 
     pub fn to_byte_array(&self) -> [u8; ICOM_MSG_MAX_LEN] {
