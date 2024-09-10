@@ -1,7 +1,7 @@
 use std::{error::Error};
 
 const ICOM_MSG_PAYLOAD_MAX_LEN: usize = 256;
-const ICOM_MSG_MAX_LEN: usize = 258;
+const ICOM_MSG_MAX_LEN: usize = 259;
 
 #[derive(Debug, Clone)]
 pub struct IONICOMPacketType {
