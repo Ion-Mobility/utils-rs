@@ -2,6 +2,7 @@ use std::{error::Error};
 
 const ICOM_MSG_PAYLOAD_MAX_LEN: usize = 256;
 const ICOM_MSG_MAX_LEN: usize = 259;
+const ICOM_FN_MAX_LEN: usize = 128;
 
 #[derive(Debug, Clone)]
 pub struct IONICOMPacketType {
@@ -78,6 +79,20 @@ impl IONICOMPacketType {
             Payload: payload,
             Crc: crc,
         }
+    }
+
+    pub fn get_func(&self, fncode: u8) -> Result<Vec<u8>, &'static str> {
+        let start = fncode as usize * ICOM_FN_MAX_LEN;
+        let end = start + ICOM_FN_MAX_LEN;
+
+        // Ensure that the requested function is within bounds
+        if end > self.PayloadLen as usize || start >= self.PayloadLen as usize {
+            return Err("Function code out of bounds");
+        }
+
+        // Extract the corresponding function slice
+        let func_data = self.Payload[start..end].to_vec();
+        Ok(func_data)
     }
 
     pub fn to_byte_array(&self) -> [u8; ICOM_MSG_MAX_LEN] {
