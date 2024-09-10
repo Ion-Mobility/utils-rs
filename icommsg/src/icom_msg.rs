@@ -50,7 +50,7 @@ impl IONICOMPacketType {
         // Create a buffer with PayloadLen and Payload for CRC calculation
         let mut crc_buffer = Vec::with_capacity(1 + txdata.len());
         crc_buffer.push(payload_len); // Add PayloadLen to the buffer
-        crc_buffer.extend_from_slice(&txdata); // Add Payload to the buffer
+        crc_buffer.extend_from_slice(&payload); // Add Payload to the buffer
 
         let crc = crc8(&crc_buffer); // Calculate CRC on both PayloadLen and Payload
             
