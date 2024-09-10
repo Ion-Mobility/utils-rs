@@ -5,17 +5,25 @@ use tokio::time::{sleep, Duration};
 use zbus::{Connection, Proxy};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub enum WifiSecurity {
+    WifiSecOpen = 0,
+	WifiSecWep,
+	WifiSecWpa,
+	WifiSecWpa23
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WifiInfo {
     pub freq: u32,
     pub bssid: String,
     pub signal: u8,
-    pub security: String,
+    pub security: WifiSecurity,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WifiStoredInfo {
     pub created: String,
-    pub security: String,
+    pub security: WifiSecurity,
     pub psk: String,
 }
 
@@ -83,14 +91,18 @@ pub async fn scan_wifi(interface: &str) -> Result<HashMap<String, WifiInfo>, Box
                 let wpa_flags = access_point.wpa_flags().await.unwrap();
                 let rsn_flags = access_point.rsn_flags().await.unwrap();
 
-                let security_type = if rsn_flags != 0 {
-                    "WPA2/WPA3"
+                let security_type: WifiSecurity = if rsn_flags != 0 {
+                    // "WPA2/WPA3"
+                    WifiSecurity::WifiSecWpa23
                 } else if wpa_flags != 0 {
-                    "WPA"
+                    // "WPA"
+                    WifiSecurity::WifiSecWpa
                 } else if flags & 0x01 != 0 {
-                    "WEP"
+                    // "WEP"
+                    WifiSecurity::WifiSecWep
                 } else {
-                    "Open"
+                    // "Open"
+                    WifiSecurity::WifiSecOpen
                 };
                 scan_results.insert(
                     String::from_utf8(ssid).unwrap(),
@@ -98,7 +110,7 @@ pub async fn scan_wifi(interface: &str) -> Result<HashMap<String, WifiInfo>, Box
                         freq: frequency,
                         bssid: hw_address,
                         signal: signal_strength,
-                        security: security_type.to_string(),
+                        security: security_type,
                     },
                 );
             }
@@ -203,7 +215,7 @@ pub async fn get_stored_wifi() -> Result<HashMap<String, WifiStoredInfo>, Box<dy
                 ap_name.to_string(),
                 WifiStoredInfo {
                     created: ap_created,
-                    security: ap_sec.to_string(),
+                    security: WifiSecurity::WifiSecOpen,
                     psk: "".to_string(), // Placeholder for PSK
                 },
             );
