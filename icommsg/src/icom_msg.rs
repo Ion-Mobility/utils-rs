@@ -1,6 +1,7 @@
 use std::{error::Error};
 
 const ICOM_MSG_PAYLOAD_MAX_LEN: usize = 256;
+const ICOM_MSG_MAX_LEN: usize = 258;
 
 #[derive(Debug, Clone)]
 pub struct IONICOMPacketType
@@ -77,17 +78,17 @@ impl IONICOMPacketType {
         }
     }
 
-    pub fn to_byte_array(&self) -> [u8; 130] {
-        let mut buffer = [0u8; 130];
+    pub fn to_byte_array(&self) -> [u8; ICOM_MSG_MAX_LEN] {
+        let mut buffer = [0u8; ICOM_MSG_MAX_LEN];
         
         // First byte is the payload length
         buffer[0] = self.PayloadLen;
         
         // Next ICOM_MSG_PAYLOAD_MAX_LEN bytes are the payload
-        buffer[1..129].copy_from_slice(&self.Payload);
+        buffer[1..ICOM_MSG_PAYLOAD_MAX_LEN+1].copy_from_slice(&self.Payload);
         
         // Last byte is the CRC
-        buffer[129] = self.Crc;
+        buffer[ICOM_MSG_PAYLOAD_MAX_LEN+1] = self.Crc;
 
         buffer
     }
@@ -103,8 +104,8 @@ impl IONICOMPacketType {
     
     // Converts a byte array (Vec<u8>) back to IONICOMPacketType
     pub fn from_byte_array(rxdata: Vec<u8>) -> Result<Self, Box<dyn Error>> {
-        if rxdata.len() != 130 {
-            return Err("Invalid byte array length. Expected 130 bytes.".into());
+        if rxdata.len() != ICOM_MSG_MAX_LEN {
+            return Err("Invalid byte array length. Expected ICOM_MSG_MAX_LEN bytes.".into());
         }
 
         // Extract PayloadLen
@@ -118,10 +119,10 @@ impl IONICOMPacketType {
 
         // Extract Payload
         let mut payload = [0u8; ICOM_MSG_PAYLOAD_MAX_LEN];
-        payload.copy_from_slice(&rxdata[1..129]);
+        payload.copy_from_slice(&rxdata[1..ICOM_MSG_PAYLOAD_MAX_LEN+1]);
 
         // Extract CRC
-        let crc = rxdata[129];
+        let crc = rxdata[ICOM_MSG_PAYLOAD_MAX_LEN+1];
 
         // Create IONICOMPacketType
         let packet = IONICOMPacketType {
