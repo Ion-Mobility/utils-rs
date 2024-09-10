@@ -57,7 +57,7 @@ pub async fn send_wificmd_pack(send_pack: Vec<u8>) -> Result<(), Box<dyn std::er
     ).await?;
 
     let _ = proxy.call("SendPackg", &(send_pack)).await?;
-    println!("Received: {:?}", send_pack);
+    // println!("Received: {:?}", send_pack);
     
     Ok(())
 }
