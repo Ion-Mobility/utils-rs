@@ -6,17 +6,17 @@ use zbus::{Connection, Proxy};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WifiInfo {
-    freq: u32,
-    bssid: String,
-    signal: u8,
-    security: String,
+    pub freq: u32,
+    pub bssid: String,
+    pub signal: u8,
+    pub security: String,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WifiStoredInfo {
-    created: String,
-    security: String,
-    psk: String,
+    pub created: String,
+    pub security: String,
+    pub psk: String,
 }
 
 pub async fn get_wificmd_pack() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
