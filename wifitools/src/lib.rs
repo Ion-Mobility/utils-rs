@@ -4,7 +4,7 @@ use std::{collections::HashMap, str::FromStr};
 use tokio::time::{sleep, Duration};
 use zbus::{Connection, Proxy};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Copy, Debug, PartialEq, Eq, Clone)]
 pub enum WifiSecurity {
     WifiSecOpen = 0,
 	WifiSecWep,
