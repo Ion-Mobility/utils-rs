@@ -82,6 +82,7 @@ impl IONICOMPacketType {
     }
 
     pub fn dump(&self) {
+        println!("====================================================");
         println!("Payload Length: {}", self.PayloadLen);
         println!("CRC: 0x{:02X}", self.Crc);
         println!("Payload Dump:");
@@ -97,6 +98,7 @@ impl IONICOMPacketType {
 
             println!(); // Newline after each function chunk
         }
+        println!("====================================================");
     }
 
     pub fn get_func(&self, fncode: u8) -> Result<Vec<u8>, &'static str> {
@@ -112,7 +114,7 @@ impl IONICOMPacketType {
         let func_data = self.Payload[start..end].to_vec();
         Ok(func_data)
     }
-    
+
     pub fn set_func(&mut self, fncode: u8, data: Vec<u8>) -> Result<(), &'static str> {
         let start = fncode as usize * ICOM_FN_MAX_LEN;
         let end = start + data.len();

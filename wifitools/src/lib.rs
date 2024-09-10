@@ -56,7 +56,7 @@ pub async fn send_wificmd_pack(send_pack: Vec<u8>) -> Result<(), Box<dyn std::er
         "org.ion.IComGateway" // Introspection interface
     ).await?;
 
-    let _ = proxy.call("SendPackg", &(send_pack)).await?;
+    let _ = proxy.call("SendPackg", &(send_pack, 0u8)).await?;
     // println!("Received: {:?}", send_pack);
     
     Ok(())
