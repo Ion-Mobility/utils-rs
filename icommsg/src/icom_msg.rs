@@ -128,11 +128,12 @@ impl IONICOMPacketType {
         self.Payload[start..start + data.len()].copy_from_slice(&data);
 
         // Update the payload length if necessary
-        let new_len = (start + data.len()) as u16;
-        if new_len > self.PayloadLen {
-            self.PayloadLen = new_len;
-        }
-
+        // let new_len = (start + data.len()) as u16;
+        // if new_len > self.PayloadLen {
+        //     self.PayloadLen = new_len;
+        // }
+        self.PayloadLen = 256;
+        
         // Recalculate the CRC
         let mut crc_buffer = Vec::with_capacity(2 + self.PayloadLen as usize);
         crc_buffer.push((self.PayloadLen & 0xFF) as u8);  // Low byte
