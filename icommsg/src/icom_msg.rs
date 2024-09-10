@@ -109,10 +109,13 @@ impl IONICOMPacketType {
         if end > self.PayloadLen as usize || start >= self.PayloadLen as usize {
             return Err("Function code out of bounds");
         }
-
-        // Extract the corresponding function slice
-        let func_data = self.Payload[start..end].to_vec();
-        Ok(func_data)
+        if self.Payload[start] != 0 {
+            // Extract the corresponding function slice
+            let func_data = self.Payload[start..end].to_vec();
+            Ok(func_data)
+        } else {
+            return Err("Function code fncode empty");
+        }
     }
 
     pub fn set_func(&mut self, fncode: u8, data: Vec<u8>) -> Result<(), &'static str> {
@@ -128,12 +131,8 @@ impl IONICOMPacketType {
         self.Payload[start..start + data.len()].copy_from_slice(&data);
 
         // Update the payload length if necessary
-        // let new_len = (start + data.len()) as u16;
-        // if new_len > self.PayloadLen {
-        //     self.PayloadLen = new_len;
-        // }
         self.PayloadLen = 256;
-        
+
         // Recalculate the CRC
         let mut crc_buffer = Vec::with_capacity(2 + self.PayloadLen as usize);
         crc_buffer.push((self.PayloadLen & 0xFF) as u8);  // Low byte
