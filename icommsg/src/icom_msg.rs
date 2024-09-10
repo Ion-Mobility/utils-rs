@@ -80,6 +80,24 @@ impl IONICOMPacketType {
             Crc: crc,
         }
     }
+    
+    pub fn dump(&self) {
+        println!("Payload Length: {}", self.PayloadLen);
+        println!("CRC: 0x{:02X}", self.Crc);
+        println!("Payload Dump:");
+
+        for (i, chunk) in self.Payload.chunks(ICOM_FN_MAX_LEN).enumerate() {
+            // Display the function index
+            println!("Function {}:", i);
+
+            // Print the chunk in hexadecimal
+            for byte in chunk {
+                print!("{:02X} ", byte);
+            }
+
+            println!(); // Newline after each function chunk
+        }
+    }
 
     pub fn get_func(&self, fncode: u8) -> Result<Vec<u8>, &'static str> {
         let start = fncode as usize * ICOM_FN_MAX_LEN;
