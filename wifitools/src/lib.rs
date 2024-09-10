@@ -1,8 +1,10 @@
 use rusty_network_manager::{SettingsProxy, AccessPointProxy, NetworkManagerProxy, WirelessProxy, SettingsConnectionProxy};
-use zbus::zvariant::{OwnedValue, Value as ZValue};
-use std::{collections::HashMap, str::FromStr};
+// use zbus::zvariant::{OwnedValue, Value as ZValue};
+use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
 use zbus::{Connection, Proxy};
+use zvariant::OwnedValue;
+// use std::collections::HashMap;
 
 #[derive(Copy, Debug, PartialEq, Eq, Clone)]
 pub enum WifiSecurity {
@@ -158,7 +160,7 @@ pub async fn get_stored_wifi() -> Result<HashMap<String, WifiStoredInfo>, Box<dy
 
         // Retrieve connection settings
         let setcfgs: HashMap<String, HashMap<String, OwnedValue>> = setting_connection_proxy.get_settings().await?;
-        let pathcfg = setting_connection_proxy.filename().await?;
+        let _pathcfg = setting_connection_proxy.filename().await?;
         let mut wireless_cfg_found = false;
         for (keystr, value) in &setcfgs {
             if keystr == "connection" {
@@ -203,7 +205,7 @@ pub async fn get_stored_wifi() -> Result<HashMap<String, WifiStoredInfo>, Box<dy
             let ap_name = ssid.as_deref().unwrap_or(&default_ssid);
             let ap_created = timestamp.map_or("No timestamp found".to_string(), |t| t.to_string());
             let default_sec = "None".to_string();
-            let ap_sec = security.as_deref().unwrap_or(&default_sec);
+            let _ap_sec = security.as_deref().unwrap_or(&default_sec);
 
             // Print extracted details
             // println!("SSID: {}", ap_name);
@@ -224,3 +226,45 @@ pub async fn get_stored_wifi() -> Result<HashMap<String, WifiStoredInfo>, Box<dy
     Ok(stored_results)
 }
 
+// pub async fn connect_wifi(
+//     interface: &str,
+//     ssid: &str,
+//     password: Option<&str>,
+// ) -> Result<(), Box<dyn std::error::Error>> {
+//     let connection = Connection::system().await?;
+//     let nm = NetworkManagerProxy::new(&connection).await?;
+
+//     // Create connection properties
+//     let mut connection_properties: HashMap<String, ZValue> = HashMap::new();
+
+//     // Create properties for the "connection" section
+//     let mut conn_props: HashMap<String, ZValue> = HashMap::new();
+//     conn_props.insert("id".to_string(), ZValue::new(Str::from(ssid)));
+//     conn_props.insert("type".to_string(), ZValue::new(Str::from("802-11-wireless")));
+//     connection_properties.insert("connection".to_string(), ZValue::new(ZValue::Map(conn_props)));
+
+//     // Create properties for the "802-11-wireless" section
+//     let mut wireless_props: HashMap<String, ZValue> = HashMap::new();
+//     wireless_props.insert("ssid".to_string(), ZValue::new(Str::from(ssid)));
+//     connection_properties.insert("802-11-wireless".to_string(), ZValue::new(ZValue::Map(wireless_props)));
+
+//     // Create properties for "802-11-wireless-security" if a password is provided
+//     if let Some(pass) = password {
+//         let mut security_props: HashMap<String, ZValue> = HashMap::new();
+//         security_props.insert("key-mgmt".to_string(), ZValue::new(Str::from("wpa-psk")));
+//         security_props.insert("psk".to_string(), ZValue::new(Str::from(pass)));
+//         connection_properties.insert("802-11-wireless-security".to_string(), ZValue::new(ZValue::Map(security_props)));
+//     }
+
+//     // Add the new connection
+//     let settings_proxy = SettingsProxy::new(&connection).await?;
+//     let connection_path = settings_proxy.add_connection(connection_properties).await?;
+
+//     // Activate the new connection
+//     let settings_connection_proxy = SettingsConnectionProxy::new_from_path(connection_path, &connection).await?;
+//     settings_connection_proxy.activate_connection(None, None, None).await?;
+
+//     println!("Connected to Wi-Fi network '{}'", ssid);
+
+//     Ok(())
+// }
