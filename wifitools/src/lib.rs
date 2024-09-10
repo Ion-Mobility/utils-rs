@@ -4,7 +4,7 @@ use std::{collections::HashMap, str::FromStr};
 use tokio::time::{sleep, Duration};
 use zbus::{Connection, Proxy};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WifiInfo {
     freq: u32,
     bssid: String,
@@ -12,7 +12,7 @@ pub struct WifiInfo {
     security: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WifiStoredInfo {
     created: String,
     security: String,
