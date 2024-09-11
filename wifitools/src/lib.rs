@@ -1,17 +1,20 @@
-use rusty_network_manager::{SettingsProxy, AccessPointProxy, NetworkManagerProxy, WirelessProxy, SettingsConnectionProxy};
+use rusty_network_manager::{
+    AccessPointProxy, NetworkManagerProxy, SettingsConnectionProxy, SettingsProxy, WirelessProxy,
+};
 // use zbus::zvariant::{OwnedValue, Value as ZValue};
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
+use zbus::zvariant::Value;
 use zbus::{Connection, Proxy};
-use zvariant::OwnedValue;
+use zvariant::{ObjectPath, OwnedValue, Str};
 // use std::collections::HashMap;
 
 #[derive(Copy, Debug, PartialEq, Eq, Clone)]
 pub enum WifiSecurity {
     WifiSecOpen = 0,
-	WifiSecWep,
-	WifiSecWpa,
-	WifiSecWpa23
+    WifiSecWep,
+    WifiSecWpa,
+    WifiSecWpa23,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -36,10 +39,11 @@ pub async fn get_wificmd_pack() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     // Create a proxy for interacting with the D-Bus service
     let proxy = Proxy::new(
         &connection,
-        "org.ion.IComGateway",           // D-Bus destination (service name)
-        "/org/ion/IComGateway",          // Object path
-        "org.ion.IComGateway" // Introspection interface
-    ).await?;
+        "org.ion.IComGateway",  // D-Bus destination (service name)
+        "/org/ion/IComGateway", // Object path
+        "org.ion.IComGateway",  // Introspection interface
+    )
+    .await?;
 
     // Call the `Introspect` method to retrieve introspection XML
     let received_pack: Vec<u8> = proxy.call("GetLatestReceived", &(0u8)).await?;
@@ -53,18 +57,21 @@ pub async fn send_wificmd_pack(send_pack: Vec<u8>) -> Result<(), Box<dyn std::er
     // Create a proxy for interacting with the D-Bus service
     let proxy = Proxy::new(
         &connection,
-        "org.ion.IComGateway",           // D-Bus destination (service name)
-        "/org/ion/IComGateway",          // Object path
-        "org.ion.IComGateway" // Introspection interface
-    ).await?;
+        "org.ion.IComGateway",  // D-Bus destination (service name)
+        "/org/ion/IComGateway", // Object path
+        "org.ion.IComGateway",  // Introspection interface
+    )
+    .await?;
 
-    let _ = proxy.call("SendPackg", &(send_pack, 0u8)).await?;
+    proxy.call("SendPackg", &(send_pack, 0u8)).await?;
     // println!("Received: {:?}", send_pack);
-    
+
     Ok(())
 }
 
-pub async fn scan_wifi(interface: &str) -> Result<HashMap<String, WifiInfo>, Box<dyn std::error::Error>> {
+pub async fn scan_wifi(
+    interface: &str,
+) -> Result<HashMap<String, WifiInfo>, Box<dyn std::error::Error>> {
     let mut scan_results: HashMap<String, WifiInfo> = HashMap::new();
     let connection = Connection::system().await?;
     let nm = NetworkManagerProxy::new(&connection).await?;
@@ -142,7 +149,8 @@ fn extract_u64(value: &OwnedValue) -> Option<u64> {
     }
 }
 
-pub async fn get_stored_wifi() -> Result<HashMap<String, WifiStoredInfo>, Box<dyn std::error::Error>> {
+pub async fn get_stored_wifi() -> Result<HashMap<String, WifiStoredInfo>, Box<dyn std::error::Error>>
+{
     let mut stored_results: HashMap<String, WifiStoredInfo> = HashMap::new();
 
     // Create a connection to the system bus
@@ -156,10 +164,12 @@ pub async fn get_stored_wifi() -> Result<HashMap<String, WifiStoredInfo>, Box<dy
 
     // Iterate over each connection path to get more details
     for conn_path in connections {
-        let setting_connection_proxy = SettingsConnectionProxy::new_from_path(conn_path, &connection).await?;
+        let setting_connection_proxy =
+            SettingsConnectionProxy::new_from_path(conn_path, &connection).await?;
 
         // Retrieve connection settings
-        let setcfgs: HashMap<String, HashMap<String, OwnedValue>> = setting_connection_proxy.get_settings().await?;
+        let setcfgs: HashMap<String, HashMap<String, OwnedValue>> =
+            setting_connection_proxy.get_settings().await?;
         let _pathcfg = setting_connection_proxy.filename().await?;
         let mut wireless_cfg_found = false;
         for (keystr, value) in &setcfgs {
@@ -176,8 +186,6 @@ pub async fn get_stored_wifi() -> Result<HashMap<String, WifiStoredInfo>, Box<dy
         }
 
         if wireless_cfg_found {
-            let ssid: Option<String>;
-            let timestamp: Option<u64>;
             let security: Option<String>;
 
             // Access the security settings
@@ -185,20 +193,22 @@ pub async fn get_stored_wifi() -> Result<HashMap<String, WifiStoredInfo>, Box<dy
 
             if let Some(security_settings) = security_settings {
                 let key_mgmt = security_settings.get("key-mgmt");
-                security = key_mgmt.and_then(|s| extract_string(s));
+                security = key_mgmt.and_then(extract_string);
             } else {
                 security = None;
                 println!("No wireless-security settings found.");
             }
 
             // Extract connection settings
-            ssid = setcfgs.get("connection")
+            let ssid: Option<String> = setcfgs
+                .get("connection")
                 .and_then(|c| c.get("id"))
-                .and_then(|id| extract_string(id));
+                .and_then(extract_string);
 
-            timestamp = setcfgs.get("connection")
+            let timestamp: Option<u64> = setcfgs
+                .get("connection")
                 .and_then(|c| c.get("timestamp"))
-                .and_then(|ts| extract_u64(ts));
+                .and_then(extract_u64);
 
             // Handle default values
             let default_ssid = "No ID found".to_string();
@@ -226,45 +236,50 @@ pub async fn get_stored_wifi() -> Result<HashMap<String, WifiStoredInfo>, Box<dy
     Ok(stored_results)
 }
 
-// pub async fn connect_wifi(
-//     interface: &str,
-//     ssid: &str,
-//     password: Option<&str>,
-// ) -> Result<(), Box<dyn std::error::Error>> {
-//     let connection = Connection::system().await?;
-//     let nm = NetworkManagerProxy::new(&connection).await?;
+pub async fn connect_wifi(
+    interface: &str,
+    ssid: &str,
+    password: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let connection = Connection::system().await?;
+    let nm = NetworkManagerProxy::new(&connection).await?;
 
-//     // Create connection properties
-//     let mut connection_properties: HashMap<String, ZValue> = HashMap::new();
+    // Create connection properties
+    let mut connection_properties: HashMap<&str, HashMap<&str, zbus::zvariant::Value<'_>>> =
+        HashMap::new();
 
-//     // Create properties for the "connection" section
-//     let mut conn_props: HashMap<String, ZValue> = HashMap::new();
-//     conn_props.insert("id".to_string(), ZValue::new(Str::from(ssid)));
-//     conn_props.insert("type".to_string(), ZValue::new(Str::from("802-11-wireless")));
-//     connection_properties.insert("connection".to_string(), ZValue::new(ZValue::Map(conn_props)));
+    // Create properties for the "connection" section
+    let mut conn_props: HashMap<&str, Value> = HashMap::new();
+    conn_props.insert("id", Value::from(ssid));
+    conn_props.insert("type", Value::from("802-11-wireless"));
+    conn_props.insert("interface-name", Value::from(interface));
+    connection_properties.insert("connection", conn_props);
 
-//     // Create properties for the "802-11-wireless" section
-//     let mut wireless_props: HashMap<String, ZValue> = HashMap::new();
-//     wireless_props.insert("ssid".to_string(), ZValue::new(Str::from(ssid)));
-//     connection_properties.insert("802-11-wireless".to_string(), ZValue::new(ZValue::Map(wireless_props)));
+    // Create properties for the "802-11-wireless" section
+    let mut wireless_props: HashMap<&str, Value> = HashMap::new();
+    wireless_props.insert("ssid", Value::from(ssid.as_bytes().to_vec()));
+    wireless_props.insert("mode", Value::from("infrastructure"));
+    connection_properties.insert("802-11-wireless", wireless_props);
 
-//     // Create properties for "802-11-wireless-security" if a password is provided
-//     if let Some(pass) = password {
-//         let mut security_props: HashMap<String, ZValue> = HashMap::new();
-//         security_props.insert("key-mgmt".to_string(), ZValue::new(Str::from("wpa-psk")));
-//         security_props.insert("psk".to_string(), ZValue::new(Str::from(pass)));
-//         connection_properties.insert("802-11-wireless-security".to_string(), ZValue::new(ZValue::Map(security_props)));
-//     }
+    // Create properties for "802-11-wireless-security" if a password is provided
+    if let Some(pass) = password {
+        let mut security_props: HashMap<&str, Value> = HashMap::new();
+        security_props.insert("key-mgmt", Value::new(Str::from("wpa-psk")));
+        security_props.insert("psk", Value::new(Str::from(pass)));
+        connection_properties.insert("802-11-wireless-security", security_props);
+    }
 
-//     // Add the new connection
-//     let settings_proxy = SettingsProxy::new(&connection).await?;
-//     let connection_path = settings_proxy.add_connection(connection_properties).await?;
+    // Add the new connection
+    let settings_proxy = SettingsProxy::new(&connection).await?;
+    let connection_path: zvariant::OwnedObjectPath =
+        settings_proxy.add_connection(connection_properties).await?;
+    // Activate the new connection
+    let device_path = nm.get_device_by_ip_iface(interface).await?;
+    let base_path = ObjectPath::try_from("/")?;
+    nm.activate_connection(&connection_path, &device_path, &base_path)
+        .await?;
 
-//     // Activate the new connection
-//     let settings_connection_proxy = SettingsConnectionProxy::new_from_path(connection_path, &connection).await?;
-//     settings_connection_proxy.activate_connection(None, None, None).await?;
+    println!("Connected to Wi-Fi network '{}'", ssid);
 
-//     println!("Connected to Wi-Fi network '{}'", ssid);
-
-//     Ok(())
-// }
+    Ok(())
+}
