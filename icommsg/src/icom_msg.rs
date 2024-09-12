@@ -81,6 +81,10 @@ impl IONICOMPacketType {
         }
     }
 
+    pub fn is_dummy() -> bool {
+        return self.payload_len == 0;
+    }
+
     pub fn dump(&self) {
         println!("====================================================");
         println!("Payload Length: {}", self.PayloadLen);
