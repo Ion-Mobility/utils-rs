@@ -69,7 +69,7 @@ impl IONICOMPacketType {
         }
     }
     
-    pub fn new_dummy() -> Self {
+    pub fn new_dummy(&self) -> Self {
         let payload = [0u8; ICOM_MSG_PAYLOAD_MAX_LEN]; // Create a payload with all zeros
         let payload_len = 0;
         let crc: u8 = 0;
