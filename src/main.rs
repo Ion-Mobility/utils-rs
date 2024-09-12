@@ -5,14 +5,16 @@ use logging::logging::MyLogging; // Assuming MyLogging is imported from logging 
 use spiconn::spi_conn::*;
 use tokio::io;
 use tokio::time::{sleep, Duration};
-use wifitools::{scan_wifi, get_stored_wifi, get_wificmd_pack, send_wificmd_pack};
+use telconn::{get_telematic_pack, send_telematic_pack};
 use icommsg::icom_msg::IONICOMPacketType;
+use spibitbang::IonSpiConnError;
+use spibitbang::SpiSlave;
 #[tokio::main]
 async fn main() -> io::Result<()> {
     loop {
-        if let Ok(_wifi_cmd) = get_wificmd_pack().await {
-            println!("Found wifi command package: {:?}", _wifi_cmd);
-            let _ = send_wificmd_pack(_wifi_cmd).await;
+        if let Ok(_tel_pack_rx) = get_telematic_pack().await {
+            println!("Found wifi command package: {:?}", _tel_pack_rx);
+            let _ = send_telematic_pack(_tel_pack_rx).await;
         }
         sleep(Duration::from_millis(100)).await;
     }
