@@ -23,8 +23,8 @@ impl SpiDummy {
         self.file.write_all(&data).await
     }
 
-    pub async fn recv(&mut self, buffer_size: usize) -> io::Result<Vec<u8>> {
-        let mut buffer = vec![0; buffer_size];
+    pub async fn recv(&mut self) -> io::Result<Vec<u8>> {
+        let mut buffer = vec![0; 4096]; // Adjust buffer size as needed
         let bytes_read = self.file.read(&mut buffer).await?;
         buffer.truncate(bytes_read); // Trim buffer to actual read bytes
         Ok(buffer)
