@@ -82,7 +82,7 @@ impl IONICOMPacketType {
     }
 
     pub fn is_dummy(&self) -> bool {
-        return self.payload_len == 0;
+        return self.PayloadLen == 0;
     }
 
     pub fn dump(&self) {
