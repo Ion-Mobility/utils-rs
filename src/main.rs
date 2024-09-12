@@ -7,8 +7,6 @@ use tokio::io;
 use tokio::time::{sleep, Duration};
 use telconn::{get_telematic_pack, send_telematic_pack};
 use icommsg::icom_msg::IONICOMPacketType;
-use spibitbang::IonSpiConnError;
-use spibitbang::SpiSlave;
 #[tokio::main]
 async fn main() -> io::Result<()> {
     loop {

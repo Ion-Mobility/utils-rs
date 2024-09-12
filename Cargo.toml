@@ -17,5 +17,4 @@ spiconn = { path = "spiconn" }
 wifitools = { path = "wifitools" }
 icommsg = { path = "icommsg" }
 telconn = { path = "telconn" }
-spibitbang = { path = "spibitbang" }
 tokio = { version = "1.40.0", features = ["full"] }
