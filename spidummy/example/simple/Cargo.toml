@@ -1,0 +1,8 @@
+[package]
+name = "spidummy-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+spidummy = { version = "0.1.0", path = "../.." }
+tokio = { version = "1.40.0", features = ["full"] }
