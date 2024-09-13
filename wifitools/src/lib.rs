@@ -236,22 +236,33 @@ pub async fn get_stored_wifi() -> Result<HashMap<String, WifiStoredInfo>, Box<dy
     Ok(stored_results)
 }
 
-fn convert_hashmap(
-    original: HashMap<String, HashMap<String, OwnedValue>>,
-) -> HashMap<String, HashMap<String, Value<'static>>> {
-    let mut converted: HashMap<String, HashMap<String, Value<'_>>> = HashMap::new();
+fn convert_hashmap<'a>(
+    input: &'a HashMap<String, HashMap<String, OwnedValue>>,
+) -> HashMap<&'a str, HashMap<&'a str, &Value<'a>>> {
+    // Create the output HashMap
+    let mut output: HashMap<&str, HashMap<&str, &Value>> = HashMap::new();
 
-    for (outer_key, inner_map) in original {
-        let mut new_inner_map: HashMap<String, Value<'_>> = HashMap::new();
-        for (inner_key, value) in inner_map {
-            // Insert the owned value directly
-            new_inner_map.insert(inner_key, value.into());
+    // Iterate through the outer HashMap
+    for (outer_key, inner_map) in input {
+        // Create a new HashMap for the inner values
+        let mut inner_output_map: HashMap<&str, &Value> = HashMap::new();
+
+        // Iterate through the inner HashMap
+        for (inner_key, inner_value) in inner_map {
+            // Convert OwnedValue to zvariant::Value
+            let value = inner_value.downcast_ref().unwrap(); // Assuming OwnedValue implements conversion to Value
+
+            // Insert the borrowed keys and converted values into the new inner HashMap
+            inner_output_map.insert(inner_key.as_str(), value);
         }
-        converted.insert(outer_key, new_inner_map);
+
+        // Insert the borrowed outer key and the new inner HashMap into the output HashMap
+        output.insert(outer_key.as_str(), inner_output_map);
     }
 
-    converted
+    output
 }
+
 pub async fn connect_wifi(
     interface: &str,
     ssid: &str,
@@ -267,13 +278,19 @@ pub async fn connect_wifi(
     let mut existing_connection_path: Option<zvariant::OwnedObjectPath> = None;
     for connection_path in connections {
         let setting_connection_proxy =
-        SettingsConnectionProxy::new_from_path(connection_path.clone(), &connection).await?;
+            SettingsConnectionProxy::new_from_path(connection_path.clone(), &connection).await?;
 
         let settings = setting_connection_proxy.get_settings().await?;
         if let Some(connection_props) = settings.get("connection") {
-            let id = connection_props.get("id").and_then(|v| Some(v.downcast_ref::<Str>()));
-            let interface_name = connection_props.get("interface-name").and_then(|v| Some(v.downcast_ref::<Str>()));
-            if id.expect("REASON").ok() == Some(Str::from(ssid)) || interface_name.expect("REASON").ok() == Some(Str::from(interface)) {
+            let id = connection_props
+                .get("id")
+                .and_then(|v| Some(v.downcast_ref::<Str>()));
+            let interface_name = connection_props
+                .get("interface-name")
+                .and_then(|v| Some(v.downcast_ref::<Str>()));
+            if id.expect("REASON").ok() == Some(Str::from(ssid))
+                || interface_name.expect("REASON").ok() == Some(Str::from(interface))
+            {
                 println!("{} Exitsed!", ssid);
                 existing_connection_path = Some(connection_path.clone());
                 break;
@@ -281,18 +298,26 @@ pub async fn connect_wifi(
         }
     }
     if let Some(connection_path) = existing_connection_path {
-        let settings_connection = SettingsConnectionProxy::new_from_path(connection_path, &connection).await?;
-        let mut settings: HashMap<String, HashMap<String, OwnedValue>> = settings_connection.get_settings().await?;
+        let settings_connection =
+            SettingsConnectionProxy::new_from_path(connection_path.clone(), &connection).await?;
+        let mut settings: HashMap<String, HashMap<String, OwnedValue>> =
+            settings_connection.get_settings().await?;
 
         // Update Wi-Fi security settings if password is provided
         if let Some(pass) = password {
             if let Some(wireless_security) = settings.get_mut("802-11-wireless-security") {
-                wireless_security.insert("key-mgmt".to_owned(), OwnedValue::from(Str::from("wpa-psk")));
+                wireless_security.insert(
+                    "key-mgmt".to_owned(),
+                    OwnedValue::from(Str::from("wpa-psk")),
+                );
                 wireless_security.insert("psk".to_owned(), OwnedValue::from(Str::from(pass)));
             } else {
                 // Add wireless security settings if missing
                 let mut security_props: HashMap<String, OwnedValue> = HashMap::new();
-                security_props.insert("key-mgmt".to_owned(), OwnedValue::from(Str::from("wpa-psk")));
+                security_props.insert(
+                    "key-mgmt".to_owned(),
+                    OwnedValue::from(Str::from("wpa-psk")),
+                );
                 security_props.insert("psk".to_owned(), OwnedValue::from(Str::from(pass)));
                 settings.insert("802-11-wireless-security".to_owned(), security_props);
             }
@@ -308,7 +333,9 @@ pub async fn connect_wifi(
         }
 
         // Save the updated settings
-        settings_connection.update(convert_hashmap(settings)).await?;
+        settings_connection
+            .update(convert_hashmap(&settings))
+            .await?;
 
         // Activate the updated connection
         let device_path = nm.get_device_by_ip_iface(interface).await?;
@@ -352,13 +379,12 @@ pub async fn connect_wifi(
         let settings_proxy = SettingsProxy::new(&connection).await?;
         let connection_path: zvariant::OwnedObjectPath =
             settings_proxy.add_connection(connection_properties).await?;
-        
+
         // Activate the new connection
         let device_path = nm.get_device_by_ip_iface(interface).await?;
         let base_path = ObjectPath::try_from("/")?;
         nm.activate_connection(&connection_path, &device_path, &base_path)
             .await?;
-
     }
 
     println!("Connected to Wi-Fi network '{}'", ssid);
