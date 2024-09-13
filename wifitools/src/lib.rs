@@ -1,5 +1,5 @@
 use rusty_network_manager::{
-    AccessPointProxy, NetworkManagerProxy, SettingsConnectionProxy, SettingsProxy, WirelessProxy,
+    AccessPointProxy, NetworkManagerProxy, SettingsConnectionProxy, SettingsProxy, WirelessProxy, DeviceProxy
 };
 // use zbus::zvariant::{OwnedValue, Value as ZValue};
 use std::collections::HashMap;
@@ -262,7 +262,31 @@ fn convert_hashmap<'a>(
 
     output
 }
-
+// Function to check if the connection was successful
+async fn check_connection_success(
+    interface: &str,
+    ssid: &str,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    // let devices = nm.devices().await?;
+    // for device in devices {
+    //     println!("Device: {:?}", device);
+    //     let device_proxy = DeviceProxy::new_from_path(device.clone(), &nm.available_connections()).await?;
+    //     // let connection = device_proxy.get_active_connections().await?;
+    //     // for conn in connection {
+    //     //     let settings_connection_proxy = SettingsConnectionProxy::new_from_path(conn.clone(), &nm.connection()).await?;
+    //     //     let settings = settings_connection_proxy.get_settings().await?;
+    //     //     if let Some(connection_props) = settings.get("connection") {
+    //     //         let id = connection_props.get("id").and_then(|v| Some(v.downcast_ref::<Str>()));
+    //     //         if let Some(Ok(id)) = id {
+    //     //             if id == ssid {
+    //     //                 return Ok(true);
+    //     //             }
+    //     //         }
+    //     //     }
+    //     // }
+    // }
+    Ok(false)
+}
 pub async fn connect_wifi(
     interface: &str,
     ssid: &str,
@@ -288,18 +312,31 @@ pub async fn connect_wifi(
             let interface_name = connection_props
                 .get("interface-name")
                 .and_then(|v| Some(v.downcast_ref::<Str>()));
-            if id.expect("REASON").ok() == Some(Str::from(ssid))
-                || interface_name.expect("REASON").ok() == Some(Str::from(interface))
-            {
-                println!("{} Exitsed!", ssid);
-                existing_connection_path = Some(connection_path.clone());
+
+                let _id = {
+                if let Some(Ok(_id)) = id {
+                    _id
+                } else {
+                    Str::from("")
+                }
+            };
+            let _interface = {
+                if let Some(Ok(_interface)) = interface_name {
+                    _interface
+                } else {
+                    Str::from("")
+                }
+            };
+            if _id == ssid && _interface == interface {
+                existing_connection_path = Some(connection_path);
                 break;
             }
         }
     }
-    if let Some(connection_path) = existing_connection_path {
+
+    if let Some(_connection_path) = existing_connection_path {
         let settings_connection =
-            SettingsConnectionProxy::new_from_path(connection_path.clone(), &connection).await?;
+            SettingsConnectionProxy::new_from_path(_connection_path.clone(), &connection).await?;
         let mut settings: HashMap<String, HashMap<String, OwnedValue>> =
             settings_connection.get_settings().await?;
 
@@ -340,7 +377,7 @@ pub async fn connect_wifi(
         // Activate the updated connection
         let device_path = nm.get_device_by_ip_iface(interface).await?;
         let base_path = ObjectPath::try_from("/")?;
-        nm.activate_connection(&connection_path, &device_path, &base_path)
+        nm.activate_connection(&_connection_path, &device_path, &base_path)
             .await?;
 
         println!("Updated and connected to Wi-Fi network '{}'", ssid);
@@ -383,10 +420,15 @@ pub async fn connect_wifi(
         // Activate the new connection
         let device_path = nm.get_device_by_ip_iface(interface).await?;
         let base_path = ObjectPath::try_from("/")?;
-        nm.activate_connection(&connection_path, &device_path, &base_path)
-            .await?;
+        nm.activate_connection(&connection_path, &device_path, &base_path).await?;
     }
 
+    // Check if the connection was successful
+    if check_connection_success(interface, ssid).await? {
+        println!("Connected to Wi-Fi network '{}'", ssid);
+    } else {
+        println!("Failed to connect to Wi-Fi network '{}'", ssid);
+    }
     println!("Connected to Wi-Fi network '{}'", ssid);
 
     Ok(())
