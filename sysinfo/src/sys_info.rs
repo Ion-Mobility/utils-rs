@@ -1,3 +1,6 @@
+use zvariant::SerializeDict;
+use zbus::zvariant::Type;
+
 #[derive(Debug, Clone, SerializeDict, Type)]
 pub struct SysInfo {
     req: u32,
@@ -11,7 +14,7 @@ pub struct SysInfo {
 impl SysInfo {
     pub fn new() -> Self {
         SysInfo{
-            req: true,
+            req: 0,
             wifi_enable: true,
             lte_enable: true,
             gps_enable: true,
