@@ -3,11 +3,55 @@ use rusty_network_manager::{
 };
 // use zbus::zvariant::{OwnedValue, Value as ZValue};
 use std::collections::HashMap;
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, Duration, Instant};
 use zbus::zvariant::Value;
 use zbus::{Connection, Proxy};
 use zvariant::{ObjectPath, OwnedValue, Str};
 // use std::collections::HashMap;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceState {
+    Unknown = 0,
+    Unmanaged = 10,
+    Unavailable = 20,
+    Disconnected = 30,
+    Prepare = 40,
+    Config = 50,
+    NeedAuth = 60,
+    IPConfig = 70,
+    IPCheck = 80,
+    Secondaries = 90,
+    Activated = 100,
+    Deactivating = 110,
+    Failed = 120,
+}
+
+impl DeviceState {
+    /// Convert from a `u32` value to `DeviceState` enum.
+    pub fn from_u32(value: u32) -> Option<DeviceState> {
+        match value {
+            0 => Some(DeviceState::Unknown),
+            10 => Some(DeviceState::Unmanaged),
+            20 => Some(DeviceState::Unavailable),
+            30 => Some(DeviceState::Disconnected),
+            40 => Some(DeviceState::Prepare),
+            50 => Some(DeviceState::Config),
+            60 => Some(DeviceState::NeedAuth),
+            70 => Some(DeviceState::IPConfig),
+            80 => Some(DeviceState::IPCheck),
+            90 => Some(DeviceState::Secondaries),
+            100 => Some(DeviceState::Activated),
+            110 => Some(DeviceState::Deactivating),
+            120 => Some(DeviceState::Failed),
+            _ => None,  // Return `None` for unknown values.
+        }
+    }
+
+    /// Convert the `DeviceState` back to a `u32` value.
+    pub fn as_u32(&self) -> u32 {
+        *self as u32
+    }
+}
 
 #[derive(Copy, Debug, PartialEq, Eq, Clone)]
 pub enum WifiSecurity {
@@ -267,36 +311,76 @@ async fn check_connection_success(
     interface: &str,
     ssid: &str,
 ) -> Result<bool, Box<dyn std::error::Error>> {
-    // let devices = nm.devices().await?;
-    // for device in devices {
-    //     println!("Device: {:?}", device);
-    //     let device_proxy = DeviceProxy::new_from_path(device.clone(), &nm.available_connections()).await?;
-    //     // let connection = device_proxy.get_active_connections().await?;
-    //     // for conn in connection {
-    //     //     let settings_connection_proxy = SettingsConnectionProxy::new_from_path(conn.clone(), &nm.connection()).await?;
-    //     //     let settings = settings_connection_proxy.get_settings().await?;
-    //     //     if let Some(connection_props) = settings.get("connection") {
-    //     //         let id = connection_props.get("id").and_then(|v| Some(v.downcast_ref::<Str>()));
-    //     //         if let Some(Ok(id)) = id {
-    //     //             if id == ssid {
-    //     //                 return Ok(true);
-    //     //             }
-    //     //         }
-    //     //     }
-    //     // }
-    // }
+    let connection = Connection::system().await?;
+    let nm = NetworkManagerProxy::new(&connection).await?;
+    let devices = nm.devices().await?;
+    for device_path in devices {
+        let device_proxy = DeviceProxy::new_from_path(device_path.clone(), &connection).await?;
+        let device_interface = device_proxy.interface().await?;
+
+        // Check if this is the desired interface
+        if device_interface == interface {
+            println!("{:?}", DeviceState::from_u32(device_proxy.state().await?));
+            match DeviceState::from_u32(device_proxy.state().await?) {
+                Some(DeviceState::Activated) => {
+                    let settings_proxy = SettingsProxy::new(&connection).await?;
+                    let connections: Vec<zvariant::OwnedObjectPath> = settings_proxy.list_connections().await?;
+                
+                    // Try to find an existing connection with the same SSID or interface name
+                    for connection_path in connections {
+                        let setting_connection_proxy =
+                            SettingsConnectionProxy::new_from_path(connection_path.clone(), &connection).await?;
+                
+                        let settings = setting_connection_proxy.get_settings().await?;
+                        // println!("Setting: {:?}", settings);
+                        if let Some(connection_props) = settings.get("connection") {
+                            let id = connection_props
+                                .get("id")
+                                .and_then(|v| Some(v.downcast_ref::<Str>()));
+                            let interface_name = connection_props
+                                .get("interface-name")
+                                .and_then(|v| Some(v.downcast_ref::<Str>()));
+                
+                                let _id = {
+                                if let Some(Ok(_id)) = id {
+                                    _id
+                                } else {
+                                    Str::from("")
+                                }
+                            };
+                            let _interface = {
+                                if let Some(Ok(_interface)) = interface_name {
+                                    _interface
+                                } else {
+                                    Str::from("")
+                                }
+                            };
+                            if _id == ssid && _interface == interface {
+                                return Ok(true);
+                            }
+
+                        }
+                    }
+                }
+                _ => {
+
+                }
+            }
+        }
+    }
     Ok(false)
 }
 pub async fn connect_wifi(
     interface: &str,
     ssid: &str,
     password: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
+    timeout: Duration
+) -> Result<bool, Box<dyn std::error::Error>> {
     let connection = Connection::system().await?;
     let nm = NetworkManagerProxy::new(&connection).await?;
     let settings_proxy = SettingsProxy::new(&connection).await?;
 
-    let connections = settings_proxy.list_connections().await?;
+    let connections: Vec<zvariant::OwnedObjectPath> = settings_proxy.list_connections().await?;
 
     // Try to find an existing connection with the same SSID or interface name
     let mut existing_connection_path: Option<zvariant::OwnedObjectPath> = None;
@@ -305,6 +389,7 @@ pub async fn connect_wifi(
             SettingsConnectionProxy::new_from_path(connection_path.clone(), &connection).await?;
 
         let settings = setting_connection_proxy.get_settings().await?;
+        // println!("Setting: {:?}", settings);
         if let Some(connection_props) = settings.get("connection") {
             let id = connection_props
                 .get("id")
@@ -422,14 +507,17 @@ pub async fn connect_wifi(
         let base_path = ObjectPath::try_from("/")?;
         nm.activate_connection(&connection_path, &device_path, &base_path).await?;
     }
+    let start = Instant::now();
 
-    // Check if the connection was successful
-    if check_connection_success(interface, ssid).await? {
-        println!("Connected to Wi-Fi network '{}'", ssid);
-    } else {
-        println!("Failed to connect to Wi-Fi network '{}'", ssid);
+    while start.elapsed() < timeout {
+        if check_connection_success(interface, ssid).await? {
+            println!("Connected to Wi-Fi network '{}'", ssid);
+            return Ok(true); // Successfully connected to the correct SSID
+        }
+
+        // Sleep for a short duration between checks (e.g., 1 second)
+        sleep(Duration::from_secs(1)).await;
     }
-    println!("Connected to Wi-Fi network '{}'", ssid);
-
-    Ok(())
+    println!("Cannot Connect to Wi-Fi network '{}'", ssid);
+    Ok(false)
 }
