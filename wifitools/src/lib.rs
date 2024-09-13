@@ -377,6 +377,12 @@ pub async fn connect_wifi(
     password: Option<&str>,
     timeout: Duration
 ) -> Result<bool, Box<dyn std::error::Error>> {
+    if ssid.len() > 32 {
+        return Err("SSID Invalid".into());
+    }
+    if password.expect("Invalid Password").len() < 8 {
+        return Err("Password invalid!".into());
+    }
     let connection = Connection::system().await?;
     let nm = NetworkManagerProxy::new(&connection).await?;
     let settings_proxy = SettingsProxy::new(&connection).await?;
@@ -421,6 +427,8 @@ pub async fn connect_wifi(
     }
 
     if let Some(_connection_path) = existing_connection_path {
+        println!("Updated and connected to Wi-Fi network '{}'", ssid);
+
         let settings_connection =
             SettingsConnectionProxy::new_from_path(_connection_path.clone(), &connection).await?;
         let mut settings: HashMap<String, HashMap<String, OwnedValue>> =
@@ -466,8 +474,8 @@ pub async fn connect_wifi(
         nm.activate_connection(&_connection_path, &device_path, &base_path)
             .await?;
 
-        println!("Updated and connected to Wi-Fi network '{}'", ssid);
     } else {
+        println!("Creating and Connect to new AP");
         // Create connection properties
         let mut connection_properties: HashMap<&str, HashMap<&str, zbus::zvariant::Value<'_>>> =
             HashMap::new();
