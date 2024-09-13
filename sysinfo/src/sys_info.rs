@@ -21,4 +21,14 @@ impl SysInfo {
             track_enable: true
         }
     }
+
+    pub fn get_wifi_cfg(&self) -> bool {
+        return self.wifi_enable;
+    }
+    pub fn get_lte_cfg(&self) -> bool {
+        return self.wifi_enable;
+    }
+    pub fn get_gps_cfg(&self) -> bool {
+        return self.gps_enable;
+    }
 }
