@@ -370,6 +370,7 @@ async fn check_connection_success(
     }
     Ok(false)
 }
+
 pub async fn connect_wifi(
     interface: &str,
     ssid: &str,
@@ -519,5 +520,54 @@ pub async fn connect_wifi(
         sleep(Duration::from_secs(1)).await;
     }
     println!("Cannot Connect to Wi-Fi network '{}'", ssid);
+    Ok(false)
+}
+
+pub async fn remove_stored_wifi(remove_apname: String) -> Result<bool, Box<dyn std::error::Error>> {
+    // Create a connection to the system bus
+    let connection = Connection::system().await?;
+
+    // Initialize the SettingsProxy instance
+    let settings = SettingsProxy::new(&connection).await?;
+
+    // Retrieve the list of stored connections
+    let connections = settings.list_connections().await?;
+
+    // Iterate over each connection path to get more details
+    for conn_path in connections {
+        let setting_connection_proxy =
+            SettingsConnectionProxy::new_from_path(conn_path, &connection).await?;
+
+        // Retrieve connection settings
+        let setcfgs: HashMap<String, HashMap<String, OwnedValue>> =
+            setting_connection_proxy.get_settings().await?;
+        let _pathcfg = setting_connection_proxy.filename().await?;
+
+        for (keystr, value) in &setcfgs {
+            if keystr == "connection" {
+                if let Some(type_value) = value.get("type") {
+                    if let Some(type_str) = extract_string(type_value) {
+                        if type_str == "802-11-wireless" {
+                            let ssid: Option<String> = setcfgs
+                            .get("connection")
+                            .and_then(|c| c.get("id"))
+                            .and_then(extract_string);
+                    
+                            // Handle default values
+                            let default_ssid = "No ID found".to_string();
+                            let ap_name = ssid.as_deref().unwrap_or(&default_ssid);
+                            if ap_name == remove_apname {
+                                println!("Found stored {}, begin remove it", remove_apname);
+                                setting_connection_proxy.delete().await?;
+                                return Ok(true);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+    println!("Not found {} to remove", remove_apname);
     Ok(false)
 }
