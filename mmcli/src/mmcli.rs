@@ -3,7 +3,7 @@ use dbus::arg::RefArg;
 use dbus::arg::messageitem::MessageItem;
 use dbus::blocking::BlockingSender;
 use dbus::blocking::stdintf::org_freedesktop_dbus::ObjectManager;
-
+use dbus::arg::messageitem::MessageItemDict;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use log::{trace, info, warn};
@@ -15,6 +15,12 @@ pub enum IonModemCliError {
     MethodCallError(String),
     SendError(String),
     ResponseError(String),
+}
+
+#[derive(Default, Debug)]
+pub struct LteSignalStrength {
+    pub rsrp: Option<i32>, // Reference Signal Received Power
+    pub rsrq: Option<i32>, // Reference Signal Received Quality
 }
 
 impl std::fmt::Display for IonModemCliError {
@@ -330,4 +336,214 @@ impl IonModemCli {
     
         Ok(())
     }
+
+    // Get the current signal refresh rate
+    pub fn get_signal_refresh_rate(&self) -> Result<u32, IonModemCliError> {
+        match self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Signal", "Rate") {
+            Ok(results) => {
+                for result in results.iter() {
+                    if let MessageItem::Variant(ret_variant) = result {
+                        if let MessageItem::UInt32(rate) = **ret_variant {
+                            return Ok(rate);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                info!("Failed to get signal refresh rate: {:?}", e);
+            }
+        }
+        Err(IonModemCliError::ModemError("Failed to retrieve signal refresh rate".to_owned()))
+    }
+
+    // Set the signal refresh rate
+    pub fn setup_signal_refresh_rate(&self, rate: u32) -> Result<(), IonModemCliError> {
+        // Check if self.modem is empty
+        if self.modem.is_empty() {
+            return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+        }
+
+        let interface = "org.freedesktop.ModemManager1.Modem.Signal";
+        let method = "Setup";
+        let connection = Connection::new_system()
+            .map_err(|e| IonModemCliError::ConnectionError(format!("Failed to connect to system bus: {}", e)))?;
+
+        // Prepare the D-Bus message to set the signal refresh rate
+        let msg = Message::new_method_call("org.freedesktop.ModemManager1", &self.modem, interface, method)
+            .map_err(|e| IonModemCliError::MethodCallError(format!("Failed to create method call: {}", e)))?
+            .append1(rate);
+
+        // Send the message and handle the response
+        connection.send_with_reply_and_block(msg, Duration::from_millis(2000))
+            .map_err(|e| IonModemCliError::SendError(format!("Failed to send message: {}", e)))?;
+
+        Ok(())
+    }
+
+    // Get the LTE signal strength
+    pub fn get_lte_signal_strength(&self) -> Result<Option<LteSignalStrength>, IonModemCliError> {
+        match self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Signal", "Lte") {
+            Ok(results) => {
+                for result in results.iter() {
+                    if let MessageItem::Variant(ref ret_variant) = result {
+                        if let MessageItem::Dict(ref dict) = **ret_variant {
+                            let mut lte_signal = LteSignalStrength::default();
+                            for (key, value) in dict.to_vec() {
+                                if let MessageItem::Str(ref key_str) = key {
+                                    match key_str.as_str() {
+                                        "rsrp" => {
+                                            if let MessageItem::Variant(ref rsrp_value) = value {
+                                                if let MessageItem::Double(rsrp) = **rsrp_value {
+                                                    lte_signal.rsrp = Some(rsrp as i32);
+                                                }
+                                            }
+                                        }
+                                        "rsrq" => {
+                                            if let MessageItem::Variant(ref rsrq_value) = value {
+                                                if let MessageItem::Double(rsrq) = **rsrq_value {
+                                                    lte_signal.rsrq = Some(rsrq as i32);
+                                                }
+                                            }
+                                        }
+                                        // Add other LTE signal-related parameters here
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            return Ok(Some(lte_signal));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                info!("Failed to get LTE signal strength: {:?}", e);
+            }
+        }
+        Err(IonModemCliError::ModemError("Failed to retrieve LTE signal strength".to_owned()))
+    }
+
+    pub fn list_firmware(&self) -> Result<(String, Vec<HashMap<String, MessageItem>>), IonModemCliError> {
+        if self.modem.is_empty() {
+            return Err(IonModemCliError::ResponseError("Modem is not specified".to_owned()));
+        }
+
+        let conn = Connection::new_system()
+            .map_err(|e| IonModemCliError::ConnectionError(format!("Failed to connect to system bus: {}", e)))?;
+        
+        let interface = "org.freedesktop.ModemManager1.Modem.Firmware";
+        let method = "List";
+
+        let msg = Message::new_method_call(&self.destination, &self.modem, interface, method)
+            .map_err(|e| IonModemCliError::MethodCallError(format!("Failed to create method call: {}", e)))?;
+
+        let reply = conn.send_with_reply_and_block(msg, Duration::from_secs(2))
+            .map_err(|e| IonModemCliError::SendError(format!("Failed to send message: {}", e)))?;
+
+        let items = reply.get_items();
+        let mut installed_firmware = Vec::new();
+        let mut selected_firmware = String::new();
+
+        if let Some(MessageItem::Str(selected)) = items.get(0) {
+            selected_firmware = selected.to_string();
+        }
+
+        if let Some(MessageItem::Array(ref array)) = items.get(1) {
+            for item in array.iter() {
+                if let MessageItem::Dict(ref dict) = item {
+                    let mut hashmap = HashMap::new();
+                    for (key, value) in dict.to_vec() {
+                        if let MessageItem::Str(ref key_str) = key {
+                            hashmap.insert(key_str.to_string(), value);
+                        }
+                    }
+                    installed_firmware.push(hashmap);
+                }
+            }
+        }
+
+        Ok((selected_firmware, installed_firmware))
+    }
+
+    pub fn list_profiles(&self) -> Result<Vec<HashMap<String, MessageItem>>, IonModemCliError> {
+        if self.modem.is_empty() {
+            return Err(IonModemCliError::ResponseError("Modem is not specified".to_owned()));
+        }
+
+        let conn = Connection::new_system()
+            .map_err(|e| IonModemCliError::ConnectionError(format!("Failed to connect to system bus: {}", e)))?;
+        
+        let interface = "org.freedesktop.ModemManager1.Modem.Modem3gpp.ProfileManager";
+        let method = "List";
+
+        let msg = Message::new_method_call(&self.destination, &self.modem, interface, method)
+            .map_err(|e| IonModemCliError::MethodCallError(format!("Failed to create method call: {}", e)))?;
+
+        let reply = conn.send_with_reply_and_block(msg, Duration::from_secs(2))
+            .map_err(|e| IonModemCliError::SendError(format!("Failed to send message: {}", e)))?;
+
+        let items = reply.get_items();
+        if let Some(MessageItem::Array(ref array)) = items.get(0) {
+            let mut profiles = Vec::new();
+            for item in array.iter() {
+                if let MessageItem::Dict(ref dict) = item {
+                    let mut hashmap = HashMap::new();
+                    for (key, value) in dict.to_vec() {
+                        if let MessageItem::Str(ref key_str) = key {
+                            hashmap.insert(key_str.to_string(), value);
+                        }
+                    }
+                    profiles.push(hashmap);
+                }
+            }
+            Ok(profiles)
+        } else {
+            Err(IonModemCliError::ResponseError("Invalid response format".to_owned()))
+        }
+    }
+
+    // Implement the `set_profile` method
+    // pub fn set_profile(&self, requested_properties: HashMap<String, MessageItem>) -> Result<HashMap<String, MessageItem>, IonModemCliError> {
+    //     if self.modem.is_empty() {
+    //         return Err(IonModemCliError::ResponseError("Modem is not specified".to_owned()));
+    //     }
+
+    //     let conn = Connection::new_system()
+    //         .map_err(|e| IonModemCliError::ConnectionError(format!("Failed to connect to system bus: {}", e)))?;
+        
+    //     let interface = "org.freedesktop.ModemManager1.Modem.Modem3gpp.ProfileManager";
+    //     let method = "Set";
+
+    //     // Create MessageItemDict manually
+    //     let mut dict: MessageItemDict = MessageItemDict::new();
+
+    //     // for (key, value) in requested_properties.into_iter() {
+    //     //     // Convert String to MessageItem::Str
+    //     //     let key_item = MessageItem::Str(key);
+    //     //     dict.insert(key_item, value);
+    //     // }
+        
+    //     // Box the Dict and wrap it in MessageItem::Variant
+    //     let variant_properties = MessageItem::Variant(Box::new(MessageItem::Dict(dict)));
+
+    //     let msg = Message::new_method_call(&self.destination, &self.modem, interface, method)
+    //         .map_err(|e| IonModemCliError::MethodCallError(format!("Failed to create method call: {}", e)))?
+    //         .append1(variant_properties);
+
+    //     let reply = conn.send_with_reply_and_block(msg, Duration::from_secs(2))
+    //         .map_err(|e| IonModemCliError::SendError(format!("Failed to send message: {}", e)))?;
+
+    //     let items = reply.get_items();
+    //     if let Some(MessageItem::Dict(ref dict)) = items.get(1) {
+    //         let mut hashmap = HashMap::new();
+    //         for (key, value) in dict.to_vec() {
+    //             if let MessageItem::Str(ref key_str) = key {
+    //                 hashmap.insert(key_str.to_string(), value);
+    //             }
+    //         }
+    //         Ok(hashmap)
+    //     } else {
+    //         Err(IonModemCliError::ResponseError("Invalid response format".to_owned()))
+    //     }
+    // }
+
 }
