@@ -3,10 +3,9 @@ use dbus::arg::RefArg;
 use dbus::arg::messageitem::MessageItem;
 use dbus::blocking::BlockingSender;
 use dbus::blocking::stdintf::org_freedesktop_dbus::ObjectManager;
-use dbus::arg::messageitem::MessageItemDict;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use log::{trace, info, warn};
+use log::{trace, warn};
 
 #[derive(Debug)]
 pub enum IonModemCliError {
@@ -79,7 +78,7 @@ impl IonModemCli {
                 Ok(())
             }
             Err(e) => {
-                info!("Modem preparation failed: {:?}", e);
+                trace!("Modem preparation failed: {:?}", e);
                 Err(IonModemCliError::ModemError(format!("Failed to prepare modem: {:?}", e)))
             }
         }
@@ -148,7 +147,7 @@ impl IonModemCli {
                 }
             }
             Err(e) => {
-                info!("Failed to get location enabled state: {:?}", e);
+                trace!("Failed to get location enabled state: {:?}", e);
             }
         }
         false
@@ -167,7 +166,7 @@ impl IonModemCli {
                 }
             }
             Err(e) => {
-                info!("Failed to get modem enabled state: {:?}", e);
+                trace!("Failed to get modem enabled state: {:?}", e);
             }
         }
         false
@@ -199,7 +198,7 @@ impl IonModemCli {
                 }
             }
             Err(e) => {
-                info!("Failed to get signal strength: {:?}", e);
+                trace!("Failed to get signal strength: {:?}", e);
             }
         }
         0.0
@@ -243,7 +242,7 @@ impl IonModemCli {
                     }
                 }
                 Err(e) => {
-                    info!("Failed to get location: {:?}", e);
+                    trace!("Failed to get location: {:?}", e);
                 }
             }
         }
@@ -258,14 +257,14 @@ impl IonModemCli {
     pub fn waiting_for_ready(&mut self) -> bool {
         if !self.ready {
             if let Err(err) = self.modem_preparing() {
-                info!("Failed to prepare modem: {}", err);
+                trace!("Failed to prepare modem: {}", err);
                 return false;
             }
             self.ready = true;
         } else {
             let now = Instant::now();
             if now.duration_since(self.last_check) >= self.check_interval {
-                info!("Recheck modem every {:?} Seconds", self.check_interval);
+                trace!("Recheck modem every {:?} Seconds", self.check_interval);
                 self.last_check = now;
                 match self.modem_path_detection() {
                     Ok(_modempath) => {
@@ -274,12 +273,12 @@ impl IonModemCli {
                             self.ready = false;
                             self.modem = _modempath;
                         } else {
-                            info!("Modem hasn't changed!");
+                            trace!("Modem hasn't changed!");
                             self.ready = true;
                         }
                     }
                     Err(e) => {
-                        info!("Modem preparation failed: {:?}", e);
+                        trace!("Modem preparation failed: {:?}", e);
                         self.ready = false;
                         self.modem = "".to_string();
                     }
@@ -350,7 +349,7 @@ impl IonModemCli {
                 }
             }
             Err(e) => {
-                info!("Failed to get signal refresh rate: {:?}", e);
+                trace!("Failed to get signal refresh rate: {:?}", e);
             }
         }
         Err(IonModemCliError::ModemError("Failed to retrieve signal refresh rate".to_owned()))
@@ -416,7 +415,7 @@ impl IonModemCli {
                 }
             }
             Err(e) => {
-                info!("Failed to get LTE signal strength: {:?}", e);
+                trace!("Failed to get LTE signal strength: {:?}", e);
             }
         }
         Err(IonModemCliError::ModemError("Failed to retrieve LTE signal strength".to_owned()))
