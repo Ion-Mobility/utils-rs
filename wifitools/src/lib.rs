@@ -1,5 +1,5 @@
 use rusty_network_manager::{
-    AccessPointProxy, NetworkManagerProxy, SettingsConnectionProxy, SettingsProxy, WirelessProxy, DeviceProxy
+    AccessPointProxy, NetworkManagerProxy, SettingsConnectionProxy, SettingsProxy, WirelessProxy, DeviceProxy, IP4ConfigProxy
 };
 // use zbus::zvariant::{OwnedValue, Value as ZValue};
 use std::collections::HashMap;
@@ -310,7 +310,7 @@ fn convert_hashmap<'a>(
 async fn check_connection_success(
     interface: &str,
     ssid: &str,
-) -> Result<bool, Box<dyn std::error::Error>> {
+) -> Result<(bool, String), Box<dyn std::error::Error>> {
     let connection = Connection::system().await?;
     let nm = NetworkManagerProxy::new(&connection).await?;
     let devices = nm.devices().await?;
@@ -356,7 +356,8 @@ async fn check_connection_success(
                                 }
                             };
                             if _id == ssid && _interface == interface {
-                                return Ok(true);
+                                let ip4_address = get_ip4_address(&device_proxy, &connection).await;
+                                return Ok((true, ip4_address));
                             }
 
                         }
@@ -368,7 +369,24 @@ async fn check_connection_success(
             }
         }
     }
-    Ok(false)
+    return Ok((false, "".to_string()));
+}
+
+async fn get_ip4_address(device_proxy: &DeviceProxy<'_>, connection: &Connection) -> String {
+    let ip4config_path = device_proxy.ip4_config().await;
+    let ip4config = IP4ConfigProxy::new_from_path(ip4config_path.unwrap(), connection).await;
+
+    let Ok(config) = ip4config else {
+        return String::from("Unknown");
+    }; // Assuming ip4config is a Result type
+    let Ok(address_data) = config.address_data().await else {
+        return String::from("Unknown");
+    };
+    let Some(address) = address_data.first().and_then(|addr| addr.get("address")) else {
+        return String::from("Unknown");
+    };
+
+    address.downcast_ref().unwrap()
 }
 
 pub async fn connect_wifi(
@@ -376,7 +394,7 @@ pub async fn connect_wifi(
     ssid: &str,
     password: Option<&str>,
     timeout: Duration
-) -> Result<bool, Box<dyn std::error::Error>> {
+) -> Result<(bool, String), Box<dyn std::error::Error>> {
     if ssid.len() > 32 {
         return Err("SSID Invalid".into());
     }
@@ -518,17 +536,21 @@ pub async fn connect_wifi(
     }
     let start = Instant::now();
 
-    while start.elapsed() < timeout {
-        if check_connection_success(interface, ssid).await? {
-            println!("Connected to Wi-Fi network '{}'", ssid);
-            return Ok(true); // Successfully connected to the correct SSID
-        }
+    let mut check_result = check_connection_success(interface, ssid).await?;
+    if check_result.0 == false {
+        while start.elapsed() < timeout {
+            check_result = check_connection_success(interface, ssid).await?;
+            if check_result.0 {
+                println!("Connected to Wi-Fi network '{}'", ssid);
+                return Ok(check_result); // Successfully connected to the correct SSID
+            }
 
-        // Sleep for a short duration between checks (e.g., 1 second)
-        sleep(Duration::from_secs(1)).await;
+            // Sleep for a short duration between checks (e.g., 1 second)
+            sleep(Duration::from_secs(1)).await;
+        }
     }
     println!("Cannot Connect to Wi-Fi network '{}'", ssid);
-    Ok(false)
+    Ok(check_result)
 }
 
 pub async fn remove_stored_wifi(remove_apname: String) -> Result<bool, Box<dyn std::error::Error>> {
