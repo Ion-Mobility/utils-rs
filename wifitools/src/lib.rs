@@ -7,6 +7,7 @@ use tokio::time::{sleep, Duration, Instant};
 use zbus::zvariant::Value;
 use zbus::{Connection, Proxy};
 use zvariant::{ObjectPath, OwnedValue, Str};
+use std::net::Ipv4Addr;
 // use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +68,7 @@ pub struct WifiInfo {
     pub bssid: String,
     pub signal: u8,
     pub security: WifiSecurity,
+    pub ip4_addr: [u8; 4],
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -121,7 +123,7 @@ pub async fn scan_wifi(
     let nm = NetworkManagerProxy::new(&connection).await?;
 
     let wireless_path = nm.get_device_by_ip_iface(interface).await?;
-    let wireless_proxy = WirelessProxy::new_from_path(wireless_path, &connection).await?;
+    let wireless_proxy = WirelessProxy::new_from_path(wireless_path.clone(), &connection).await?;
 
     // Create an empty HashMap for scan options
     let scan_options: HashMap<&str, zbus::zvariant::Value<'_>> = HashMap::new();
@@ -157,6 +159,15 @@ pub async fn scan_wifi(
                     // "Open"
                     WifiSecurity::WifiSecOpen
                 };
+
+                let mut ip4_address = [0, 0, 0, 0];
+                let check_connection = check_connection_success(interface, &String::from_utf8(ssid.clone()).unwrap()).await?;
+                if check_connection.0 {
+                    let device_proxy = DeviceProxy::new_from_path(wireless_path.clone(), &connection).await?;
+                    let ip4_str = get_ip4_str_address(&device_proxy, &connection).await;
+                    ip4_address = ip_to_bytes(&ip4_str);
+                }
+
                 scan_results.insert(
                     String::from_utf8(ssid).unwrap(),
                     WifiInfo {
@@ -164,6 +175,7 @@ pub async fn scan_wifi(
                         bssid: hw_address,
                         signal: signal_strength,
                         security: security_type,
+                        ip4_addr: ip4_address,
                     },
                 );
             }
@@ -310,7 +322,7 @@ fn convert_hashmap<'a>(
 async fn check_connection_success(
     interface: &str,
     ssid: &str,
-) -> Result<(bool, String), Box<dyn std::error::Error>> {
+) -> Result<(bool, [u8; 4]), Box<dyn std::error::Error>> {
     let connection = Connection::system().await?;
     let nm = NetworkManagerProxy::new(&connection).await?;
     let devices = nm.devices().await?;
@@ -356,7 +368,8 @@ async fn check_connection_success(
                                 }
                             };
                             if _id == ssid && _interface == interface {
-                                let ip4_address = get_ip4_address(&device_proxy, &connection).await;
+                                let ip4_str = get_ip4_str_address(&device_proxy, &connection).await;                              
+                                let ip4_address = ip_to_bytes(&ip4_str);
                                 return Ok((true, ip4_address));
                             }
 
@@ -369,10 +382,17 @@ async fn check_connection_success(
             }
         }
     }
-    return Ok((false, "".to_string()));
+    return Ok((false, [0, 0, 0, 0]));
 }
 
-async fn get_ip4_address(device_proxy: &DeviceProxy<'_>, connection: &Connection) -> String {
+fn ip_to_bytes(ip_str: &str) -> [u8; 4] {
+    if let Ok(ip) = ip_str.parse::<Ipv4Addr>() {
+        ip.octets() // If successfully parsed, return the 4-byte array
+    } else {
+        [0, 0, 0, 0] // If parsing fails, return an array of zeroes
+    }
+}
+async fn get_ip4_str_address(device_proxy: &DeviceProxy<'_>, connection: &Connection) -> String {
     let ip4config_path = device_proxy.ip4_config().await;
     let ip4config = IP4ConfigProxy::new_from_path(ip4config_path.unwrap(), connection).await;
 
@@ -394,7 +414,7 @@ pub async fn connect_wifi(
     ssid: &str,
     password: Option<&str>,
     timeout: Duration
-) -> Result<(bool, String), Box<dyn std::error::Error>> {
+) -> Result<(bool, [u8; 4]), Box<dyn std::error::Error>> {
     if ssid.len() > 32 {
         return Err("SSID Invalid".into());
     }
