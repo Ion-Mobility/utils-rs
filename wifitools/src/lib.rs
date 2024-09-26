@@ -322,7 +322,7 @@ fn convert_hashmap<'a>(
 async fn check_connection_success(
     interface: &str,
     ssid: &str,
-) -> Result<(bool, [u8; 4]), Box<dyn std::error::Error>> {
+) -> Result<(bool, (String, WifiInfo)), Box<dyn std::error::Error>> {
     let connection = Connection::system().await?;
     let nm = NetworkManagerProxy::new(&connection).await?;
     let devices = nm.devices().await?;
@@ -370,7 +370,40 @@ async fn check_connection_success(
                             if _id == ssid && _interface == interface {
                                 let ip4_str = get_ip4_str_address(&device_proxy, &connection).await;                              
                                 let ip4_address = ip_to_bytes(&ip4_str);
-                                return Ok((true, ip4_address));
+
+                                let wireless_path = nm.get_device_by_ip_iface(interface).await?;
+                                let wireless_proxy = WirelessProxy::new_from_path(wireless_path.clone(), &connection).await?;
+                                let access_point_path = wireless_proxy.active_access_point().await?;
+                                let access_point = AccessPointProxy::new_from_path(access_point_path, &connection).await?;
+                                let found_ssid = access_point.ssid().await.unwrap();
+                                let frequency = access_point.frequency().await.unwrap();
+                                let hw_address = access_point.hw_address().await.unwrap();
+                                let signal_strength = access_point.strength().await.unwrap(); // Signal strength in dBm
+                                let flags = access_point.flags().await.unwrap();
+                                let wpa_flags = access_point.wpa_flags().await.unwrap();
+                                let rsn_flags = access_point.rsn_flags().await.unwrap();
+
+                                let security_type: WifiSecurity = if rsn_flags != 0 {
+                                    // "WPA2/WPA3"
+                                    WifiSecurity::WifiSecWpa23
+                                } else if wpa_flags != 0 {
+                                    // "WPA"
+                                    WifiSecurity::WifiSecWpa
+                                } else if flags & 0x01 != 0 {
+                                    // "WEP"
+                                    WifiSecurity::WifiSecWep
+                                } else {
+                                    // "Open"
+                                    WifiSecurity::WifiSecOpen
+                                };
+
+                                return Ok((true, (String::from_utf8(found_ssid.clone()).unwrap(),WifiInfo {
+                                    freq: frequency,
+                                    bssid: hw_address,
+                                    signal: signal_strength,
+                                    security: security_type,
+                                    ip4_addr: ip4_address,
+                                })));
                             }
 
                         }
@@ -382,7 +415,13 @@ async fn check_connection_success(
             }
         }
     }
-    return Ok((false, [0, 0, 0, 0]));
+    return Ok((false, ("".to_string(), WifiInfo {
+        freq: 0,
+        bssid: "".to_string(),
+        signal: 0,
+        security: WifiSecurity::WifiSecOpen,
+        ip4_addr: [0u8; 4],
+    })));
 }
 
 fn ip_to_bytes(ip_str: &str) -> [u8; 4] {
@@ -414,7 +453,7 @@ pub async fn connect_wifi(
     ssid: &str,
     password: Option<&str>,
     timeout: Duration
-) -> Result<(bool, [u8; 4]), Box<dyn std::error::Error>> {
+) -> Result<(bool, (String, WifiInfo)), Box<dyn std::error::Error>> {
     if ssid.len() > 32 {
         return Err("SSID Invalid".into());
     }
