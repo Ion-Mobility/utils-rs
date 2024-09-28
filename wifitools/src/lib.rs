@@ -9,6 +9,7 @@ use zbus::{Connection, Proxy};
 use zvariant::{ObjectPath, OwnedValue, Str};
 use std::net::Ipv4Addr;
 // use std::collections::HashMap;
+const WIFI_MAC_LEN: usize = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceState {
@@ -64,9 +65,9 @@ pub enum WifiSecurity {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WifiInfo {
+    pub mac: [u8; WIFI_MAC_LEN],
     pub freq: u32,
-    pub bssid: String,
-    pub signal: u8,
+    pub rssi: u8,
     pub security: WifiSecurity,
     pub ip4_addr: [u8; 4],
 }
@@ -168,15 +169,17 @@ pub async fn scan_wifi(
                     ip4_address = ip_to_bytes(&ip4_str);
                 }
 
+                let ssid_str = String::from_utf8(ssid).unwrap();
+                let wifi_info = WifiInfo {
+                    mac: mac_str_to_array(&hw_address)?,
+                    freq: frequency,
+                    rssi: signal_strength,
+                    security: security_type,
+                    ip4_addr: ip4_address
+                };
                 scan_results.insert(
-                    String::from_utf8(ssid).unwrap(),
-                    WifiInfo {
-                        freq: frequency,
-                        bssid: hw_address,
-                        signal: signal_strength,
-                        security: security_type,
-                        ip4_addr: ip4_address,
-                    },
+                    ssid_str,
+                    wifi_info,
                 );
             }
             break;
@@ -322,7 +325,7 @@ fn convert_hashmap<'a>(
 async fn check_connection_success(
     interface: &str,
     ssid: &str,
-) -> Result<(bool, (String, WifiInfo)), Box<dyn std::error::Error>> {
+) -> Result<(bool, WifiInfo), Box<dyn std::error::Error>> {
     let connection = Connection::system().await?;
     let nm = NetworkManagerProxy::new(&connection).await?;
     let devices = nm.devices().await?;
@@ -375,7 +378,6 @@ async fn check_connection_success(
                                 let wireless_proxy = WirelessProxy::new_from_path(wireless_path.clone(), &connection).await?;
                                 let access_point_path = wireless_proxy.active_access_point().await?;
                                 let access_point = AccessPointProxy::new_from_path(access_point_path, &connection).await?;
-                                let found_ssid = access_point.ssid().await.unwrap();
                                 let frequency = access_point.frequency().await.unwrap();
                                 let hw_address = access_point.hw_address().await.unwrap();
                                 let signal_strength = access_point.strength().await.unwrap(); // Signal strength in dBm
@@ -397,13 +399,14 @@ async fn check_connection_success(
                                     WifiSecurity::WifiSecOpen
                                 };
 
-                                return Ok((true, (String::from_utf8(found_ssid.clone()).unwrap(),WifiInfo {
+                                let wifi_info = WifiInfo {
+                                    mac: mac_str_to_array(&hw_address)?,
                                     freq: frequency,
-                                    bssid: hw_address,
-                                    signal: signal_strength,
+                                    rssi: signal_strength,
                                     security: security_type,
-                                    ip4_addr: ip4_address,
-                                })));
+                                    ip4_addr: ip4_address
+                                };
+                                return Ok((true, wifi_info));
                             }
 
                         }
@@ -415,13 +418,12 @@ async fn check_connection_success(
             }
         }
     }
-    return Ok((false, ("".to_string(), WifiInfo {
+    return Ok((false, WifiInfo {
+        mac:  [0u8; WIFI_MAC_LEN],
         freq: 0,
-        bssid: "".to_string(),
-        signal: 0,
+        rssi: 0,
         security: WifiSecurity::WifiSecOpen,
-        ip4_addr: [0u8; 4],
-    })));
+        ip4_addr: [0u8; 4]} ));
 }
 
 fn ip_to_bytes(ip_str: &str) -> [u8; 4] {
@@ -453,7 +455,7 @@ pub async fn connect_wifi(
     ssid: &str,
     password: Option<&str>,
     timeout: Duration
-) -> Result<(bool, (String, WifiInfo)), Box<dyn std::error::Error>> {
+) -> Result<(bool, WifiInfo), Box<dyn std::error::Error>> {
     if ssid.len() > 32 {
         return Err("SSID Invalid".into());
     }
@@ -659,4 +661,18 @@ pub async fn remove_stored_wifi(remove_apname: String) -> Result<bool, Box<dyn s
     }
     println!("Not found {} to remove", remove_apname);
     Ok(false)
+}
+
+fn mac_str_to_array(mac: &str) -> Result<[u8; 6], Box<dyn std::error::Error>> {
+    let parts: Vec<&str> = mac.split(':').collect();
+    if parts.len() != 6 {
+        return Err("Invalid MAC address format".into());
+    }
+    
+    let mut mac_bytes = [0u8; 6];
+    for (i, part) in parts.iter().enumerate() {
+        mac_bytes[i] = u8::from_str_radix(part, 16)?;
+    }
+    
+    Ok(mac_bytes)
 }
