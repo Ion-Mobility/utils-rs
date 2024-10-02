@@ -63,7 +63,7 @@ pub enum WifiSecurity {
     WifiSecWpa23,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct WifiInfo {
     pub mac: [u8; WIFI_MAC_LEN],
     pub freq: u32,
@@ -661,6 +661,45 @@ pub async fn remove_stored_wifi(remove_apname: String) -> Result<bool, Box<dyn s
     }
     println!("Not found {} to remove", remove_apname);
     Ok(false)
+}
+
+pub async fn get_ap_info(
+    interface: &str
+) -> Result<(String, WifiInfo), Box<dyn std::error::Error>> {
+
+    let connection = Connection::system().await?;
+    let nm = NetworkManagerProxy::new(&connection).await?;
+
+    match nm.get_device_by_ip_iface(interface).await {
+        Ok(wireless_path) => {
+            let wireless_proxy = WirelessProxy::new_from_path(wireless_path, &connection)
+            .await?;
+
+            let access_point_path = wireless_proxy.active_access_point().await;
+            let access_point = AccessPointProxy::new_from_path(access_point_path.unwrap(), &connection)
+            .await?;
+
+            let ssid_option = access_point.ssid().await.unwrap();
+            if !ssid_option.is_empty() {
+                let ssid = String::from_utf8_lossy(&ssid_option);
+                println!("SSID: {:?}", ssid);
+                let check_result = check_connection_success(interface, &ssid.to_string()).await?;
+                if check_result.0 {
+                    return Ok((ssid.to_string(),check_result.1));
+                }
+            }
+        }
+
+        Err(_) => {
+            println!("Wireless device not found!");
+        }
+    }
+    return Ok(("".to_string(), WifiInfo {
+        mac:  [0u8; WIFI_MAC_LEN],
+        freq: 0,
+        rssi: 0,
+        security: WifiSecurity::WifiSecOpen,
+        ip4_addr: [0u8; 4]} ));
 }
 
 fn mac_str_to_array(mac: &str) -> Result<[u8; 6], Box<dyn std::error::Error>> {
