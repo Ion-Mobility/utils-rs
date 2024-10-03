@@ -10,3 +10,6 @@ canparse = {git = "https://github.com/Ion-Mobility/canparse", branch = "0xkelvin
 socketcan = "2.0.0"
 chrono = "0.4"
 log = "0.4.20"
+tokio-socketcan = "0.3.1"
+tokio = { version = "1.40.0", features = ["full"] }
+futures-util = "0.3.30"
