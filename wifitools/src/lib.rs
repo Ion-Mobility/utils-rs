@@ -1,5 +1,5 @@
 use rusty_network_manager::{
-    AccessPointProxy, NetworkManagerProxy, SettingsConnectionProxy, SettingsProxy, WirelessProxy, DeviceProxy
+    AccessPointProxy, NetworkManagerProxy, SettingsConnectionProxy, SettingsProxy, WirelessProxy, DeviceProxy, IP4ConfigProxy
 };
 // use zbus::zvariant::{OwnedValue, Value as ZValue};
 use std::collections::HashMap;
@@ -7,7 +7,9 @@ use tokio::time::{sleep, Duration, Instant};
 use zbus::zvariant::Value;
 use zbus::{Connection, Proxy};
 use zvariant::{ObjectPath, OwnedValue, Str};
+use std::net::Ipv4Addr;
 // use std::collections::HashMap;
+const WIFI_MAC_LEN: usize = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceState {
@@ -61,12 +63,13 @@ pub enum WifiSecurity {
     WifiSecWpa23,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct WifiInfo {
+    pub mac: [u8; WIFI_MAC_LEN],
     pub freq: u32,
-    pub bssid: String,
-    pub signal: u8,
+    pub rssi: u8,
     pub security: WifiSecurity,
+    pub ip4_addr: [u8; 4],
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -121,7 +124,7 @@ pub async fn scan_wifi(
     let nm = NetworkManagerProxy::new(&connection).await?;
 
     let wireless_path = nm.get_device_by_ip_iface(interface).await?;
-    let wireless_proxy = WirelessProxy::new_from_path(wireless_path, &connection).await?;
+    let wireless_proxy = WirelessProxy::new_from_path(wireless_path.clone(), &connection).await?;
 
     // Create an empty HashMap for scan options
     let scan_options: HashMap<&str, zbus::zvariant::Value<'_>> = HashMap::new();
@@ -157,14 +160,26 @@ pub async fn scan_wifi(
                     // "Open"
                     WifiSecurity::WifiSecOpen
                 };
+
+                let mut ip4_address = [0, 0, 0, 0];
+                let check_connection = check_connection_success(interface, &String::from_utf8(ssid.clone()).unwrap()).await?;
+                if check_connection.0 {
+                    let device_proxy = DeviceProxy::new_from_path(wireless_path.clone(), &connection).await?;
+                    let ip4_str = get_ip4_str_address(&device_proxy, &connection).await;
+                    ip4_address = ip_to_bytes(&ip4_str);
+                }
+
+                let ssid_str = String::from_utf8(ssid).unwrap();
+                let wifi_info = WifiInfo {
+                    mac: mac_str_to_array(&hw_address)?,
+                    freq: frequency,
+                    rssi: signal_strength,
+                    security: security_type,
+                    ip4_addr: ip4_address
+                };
                 scan_results.insert(
-                    String::from_utf8(ssid).unwrap(),
-                    WifiInfo {
-                        freq: frequency,
-                        bssid: hw_address,
-                        signal: signal_strength,
-                        security: security_type,
-                    },
+                    ssid_str,
+                    wifi_info,
                 );
             }
             break;
@@ -310,7 +325,7 @@ fn convert_hashmap<'a>(
 async fn check_connection_success(
     interface: &str,
     ssid: &str,
-) -> Result<bool, Box<dyn std::error::Error>> {
+) -> Result<(bool, WifiInfo), Box<dyn std::error::Error>> {
     let connection = Connection::system().await?;
     let nm = NetworkManagerProxy::new(&connection).await?;
     let devices = nm.devices().await?;
@@ -356,7 +371,42 @@ async fn check_connection_success(
                                 }
                             };
                             if _id == ssid && _interface == interface {
-                                return Ok(true);
+                                let ip4_str = get_ip4_str_address(&device_proxy, &connection).await;                              
+                                let ip4_address = ip_to_bytes(&ip4_str);
+
+                                let wireless_path = nm.get_device_by_ip_iface(interface).await?;
+                                let wireless_proxy = WirelessProxy::new_from_path(wireless_path.clone(), &connection).await?;
+                                let access_point_path = wireless_proxy.active_access_point().await?;
+                                let access_point = AccessPointProxy::new_from_path(access_point_path, &connection).await?;
+                                let frequency = access_point.frequency().await.unwrap();
+                                let hw_address = access_point.hw_address().await.unwrap();
+                                let signal_strength = access_point.strength().await.unwrap(); // Signal strength in dBm
+                                let flags = access_point.flags().await.unwrap();
+                                let wpa_flags = access_point.wpa_flags().await.unwrap();
+                                let rsn_flags = access_point.rsn_flags().await.unwrap();
+
+                                let security_type: WifiSecurity = if rsn_flags != 0 {
+                                    // "WPA2/WPA3"
+                                    WifiSecurity::WifiSecWpa23
+                                } else if wpa_flags != 0 {
+                                    // "WPA"
+                                    WifiSecurity::WifiSecWpa
+                                } else if flags & 0x01 != 0 {
+                                    // "WEP"
+                                    WifiSecurity::WifiSecWep
+                                } else {
+                                    // "Open"
+                                    WifiSecurity::WifiSecOpen
+                                };
+
+                                let wifi_info = WifiInfo {
+                                    mac: mac_str_to_array(&hw_address)?,
+                                    freq: frequency,
+                                    rssi: signal_strength,
+                                    security: security_type,
+                                    ip4_addr: ip4_address
+                                };
+                                return Ok((true, wifi_info));
                             }
 
                         }
@@ -368,7 +418,36 @@ async fn check_connection_success(
             }
         }
     }
-    Ok(false)
+    return Ok((false, WifiInfo {
+        mac:  [0u8; WIFI_MAC_LEN],
+        freq: 0,
+        rssi: 0,
+        security: WifiSecurity::WifiSecOpen,
+        ip4_addr: [0u8; 4]} ));
+}
+
+fn ip_to_bytes(ip_str: &str) -> [u8; 4] {
+    if let Ok(ip) = ip_str.parse::<Ipv4Addr>() {
+        ip.octets() // If successfully parsed, return the 4-byte array
+    } else {
+        [0, 0, 0, 0] // If parsing fails, return an array of zeroes
+    }
+}
+async fn get_ip4_str_address(device_proxy: &DeviceProxy<'_>, connection: &Connection) -> String {
+    let ip4config_path = device_proxy.ip4_config().await;
+    let ip4config = IP4ConfigProxy::new_from_path(ip4config_path.unwrap(), connection).await;
+
+    let Ok(config) = ip4config else {
+        return String::from("Unknown");
+    }; // Assuming ip4config is a Result type
+    let Ok(address_data) = config.address_data().await else {
+        return String::from("Unknown");
+    };
+    let Some(address) = address_data.first().and_then(|addr| addr.get("address")) else {
+        return String::from("Unknown");
+    };
+
+    address.downcast_ref().unwrap()
 }
 
 pub async fn connect_wifi(
@@ -376,7 +455,7 @@ pub async fn connect_wifi(
     ssid: &str,
     password: Option<&str>,
     timeout: Duration
-) -> Result<bool, Box<dyn std::error::Error>> {
+) -> Result<(bool, WifiInfo), Box<dyn std::error::Error>> {
     if ssid.len() > 32 {
         return Err("SSID Invalid".into());
     }
@@ -518,17 +597,21 @@ pub async fn connect_wifi(
     }
     let start = Instant::now();
 
-    while start.elapsed() < timeout {
-        if check_connection_success(interface, ssid).await? {
-            println!("Connected to Wi-Fi network '{}'", ssid);
-            return Ok(true); // Successfully connected to the correct SSID
-        }
+    let mut check_result = check_connection_success(interface, ssid).await?;
+    if check_result.0 == false {
+        while start.elapsed() < timeout {
+            check_result = check_connection_success(interface, ssid).await?;
+            if check_result.0 {
+                println!("Connected to Wi-Fi network '{}'", ssid);
+                return Ok(check_result); // Successfully connected to the correct SSID
+            }
 
-        // Sleep for a short duration between checks (e.g., 1 second)
-        sleep(Duration::from_secs(1)).await;
+            // Sleep for a short duration between checks (e.g., 1 second)
+            sleep(Duration::from_secs(1)).await;
+        }
     }
     println!("Cannot Connect to Wi-Fi network '{}'", ssid);
-    Ok(false)
+    Ok(check_result)
 }
 
 pub async fn remove_stored_wifi(remove_apname: String) -> Result<bool, Box<dyn std::error::Error>> {
@@ -578,4 +661,57 @@ pub async fn remove_stored_wifi(remove_apname: String) -> Result<bool, Box<dyn s
     }
     println!("Not found {} to remove", remove_apname);
     Ok(false)
+}
+
+pub async fn get_ap_info(
+    interface: &str
+) -> Result<(String, WifiInfo), Box<dyn std::error::Error>> {
+
+    let connection = Connection::system().await?;
+    let nm = NetworkManagerProxy::new(&connection).await?;
+
+    match nm.get_device_by_ip_iface(interface).await {
+        Ok(wireless_path) => {
+            let wireless_proxy = WirelessProxy::new_from_path(wireless_path, &connection)
+            .await?;
+
+            let access_point_path = wireless_proxy.active_access_point().await;
+            let access_point = AccessPointProxy::new_from_path(access_point_path.unwrap(), &connection)
+            .await?;
+
+            let ssid_option = access_point.ssid().await.unwrap();
+            if !ssid_option.is_empty() {
+                let ssid = String::from_utf8_lossy(&ssid_option);
+                println!("SSID: {:?}", ssid);
+                let check_result = check_connection_success(interface, &ssid.to_string()).await?;
+                if check_result.0 {
+                    return Ok((ssid.to_string(),check_result.1));
+                }
+            }
+        }
+
+        Err(_) => {
+            println!("Wireless device not found!");
+        }
+    }
+    return Ok(("".to_string(), WifiInfo {
+        mac:  [0u8; WIFI_MAC_LEN],
+        freq: 0,
+        rssi: 0,
+        security: WifiSecurity::WifiSecOpen,
+        ip4_addr: [0u8; 4]} ));
+}
+
+fn mac_str_to_array(mac: &str) -> Result<[u8; 6], Box<dyn std::error::Error>> {
+    let parts: Vec<&str> = mac.split(':').collect();
+    if parts.len() != 6 {
+        return Err("Invalid MAC address format".into());
+    }
+    
+    let mut mac_bytes = [0u8; 6];
+    for (i, part) in parts.iter().enumerate() {
+        mac_bytes[i] = u8::from_str_radix(part, 16)?;
+    }
+    
+    Ok(mac_bytes)
 }
