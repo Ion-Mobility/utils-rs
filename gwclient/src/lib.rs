@@ -1,6 +1,6 @@
 use zbus::{Connection, Proxy};
 use zbus::fdo::Result;
-
+use isysinfo::sys_info::SysInfo;
 pub async fn get_ota_pub_message() -> Result<Vec<u8>> {
     // Create a connection to the system bus
     let mut _result: Vec<u8> = Vec::new();
@@ -76,6 +76,25 @@ pub async fn send_ota_sub_message(data: Vec<u8>) -> Result<bool> {
         )
         .await {
             proxy.call("SendOtaSubMessage", &(data)).await?;
+        }
+    }
+
+    // Call the `Introspect` method to retrieve introspection XML
+    Ok(_result)
+}
+
+pub async fn get_isys_info() -> Result<SysInfo> {
+    // Create a connection to the system bus
+    let mut _result = SysInfo::new();
+    if let Ok(connection) = Connection::system().await {
+        if let Ok(proxy) = Proxy::new(
+            &connection,
+            "org.ion.IComGateway",  // D-Bus destination (service name)
+            "/org/ion/IComGateway", // Object path
+            "org.ion.IComGateway",  // Introspection interface
+        )
+        .await {
+            proxy.call("GetSystemInfo", &()).await?;
         }
     }
 
