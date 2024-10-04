@@ -15,14 +15,18 @@ pub struct CanUtils {
     filters: Vec<CANFilter>,
     can_info: PgnLibrary,
     id_and_signal: HashMap<u32, Vec<String>>,
-    can_socket: CANSocket
+    can_socket: CANSocket,
 }
 
 impl CanUtils {
     const DEFAULT_DBC_PATH: &'static str = "/usr/share/can-dbcs/consolidated.dbc";
 
-    pub async fn new(ifname: &str, dbc_path: Option<&Path>, ids_filter: Vec<u32>) -> Result<Self, Box<dyn std::error::Error>> {
-        // Default path for DBC file
+    /// Creates a new CanUtils instance asynchronously
+    pub async fn new(
+        ifname: &str, 
+        dbc_path: Option<&Path>, 
+        ids_filter: Vec<u32>
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {  // Add Send + Sync
         let dbc_path = dbc_path.unwrap_or_else(|| Path::new(Self::DEFAULT_DBC_PATH));
 
         loop {
@@ -32,10 +36,8 @@ impl CanUtils {
                 continue;
             }
 
-            // Try to load the DBC file into PgnLibrary
             match PgnLibrary::from_dbc_file(dbc_path) {
                 Ok(can_info) => {
-                    // Open the CAN socket asynchronously
                     let socket_can = match CANSocket::open(ifname) {
                         Ok(s) => s,
                         Err(e) => {
@@ -45,37 +47,31 @@ impl CanUtils {
                         }
                     };
 
-                    // Create CAN filters from the provided ID list
                     let filters: Vec<CANFilter> = ids_filter
                         .into_iter()
-                        .map(|id| CANFilter::new(id, 0x1FFFFFFF)) // Exact ID match filter (0x7FF is full mask)
-                        .collect::<Result<Vec<CANFilter>, _>>()?; // Handle Result<_, ConstructionError>
+                        .map(|id| CANFilter::new(id, 0x1FFFFFFF)) // 0x1FFFFFFF for full mask
+                        .collect::<Result<Vec<CANFilter>, _>>()?;
 
-                    // Apply the filters to the CAN socket if there are any filters
+                    // Set filters if available
                     if !filters.is_empty() {
-                        match socket_can.set_filter(&filters) {
-                            Ok(_) => {
-
-                            }
-                            Err(e) => {
-                                eprintln!("Can't set fillter {}", e);
-                            }
+                        if let Err(e) = socket_can.set_filter(&filters) {
+                            error!("Failed to set CAN filters: {}", e);
+                            return Err(Box::new(e));
                         }
                     }
-                    // Extract CAN signals from the PgnLibrary
+
                     let id_and_signal = can_info
                         .hash_of_canid_signals()
                         .into_iter()
                         .map(|(k, v)| (k, v.into_iter().map(String::from).collect()))
                         .collect::<HashMap<u32, Vec<String>>>();
 
-                    // Return the CanUtils struct
                     return Ok(CanUtils {
                         canport: ifname.to_string(),
                         filters,
                         can_info,
                         id_and_signal,
-                        can_socket: socket_can
+                        can_socket: socket_can,
                     });
                 }
                 Err(e) => {
@@ -87,28 +83,40 @@ impl CanUtils {
         }
     }
 
-    // The updated get_signals method that returns frames
-    pub async fn get_signals(&mut self) -> Result<HashMap<String, f32>, Box<dyn std::error::Error>> {
-        let mut _result: HashMap<String, f32> = HashMap::new();
-        if let Some(Ok(_frame)) = self.can_socket.next().await {
-            if let Some(signals) = self.id_and_signal.get(&(&_frame.id() | 0x80000000)) {
+    /// Asynchronously fetches signals from CAN frames
+    pub async fn get_signals(&mut self) -> Result<HashMap<String, f32>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut result: HashMap<String, f32> = HashMap::new();
+
+        // Asynchronously receive the next CAN frame
+        if let Some(Ok(frame)) = self.can_socket.next().await {
+            let frame_id = frame.id() | 0x80000000;
+
+            if let Some(signals) = self.id_and_signal.get(&frame_id) {
                 for signal in signals {
                     if let Some(signal_info) = self.can_info.get_spn(signal) {
                         let mut can_padded_msg = [0u8; 8];
-                        can_padded_msg[.._frame.data().len()].copy_from_slice(&_frame.data());
+                        can_padded_msg[..frame.data().len()].copy_from_slice(&frame.data());
+
                         if let Some(value) = signal_info.parse_message(&can_padded_msg) {
-                            _result.insert((&signal).to_string(), value);
+                            result.insert(signal.clone(), value);
+                        } else {
+                            error!("Failed to parse message for signal: {}", signal);
+                            return Err("Failed to parse message, please check the DBC file.".into());
                         }
                     } else {
-                        error!("Can't parse signal for {}", signal);
-                        return Err("Can't parse signal, please re-check dbc file".into());
+                        error!("Signal not found in DBC: {}", signal);
+                        return Err("Signal not found in DBC.".into());
                     }
                 }
             } else {
-                error!("Not found msgid {:x}-{} in dbc file", _frame.id(), _frame.id());
-                return Err("Can't parse income msg, please re-check filtter and dbc file".into());
+                error!("Message ID {:x} not found in DBC", frame.id());
+                return Err("Message ID not found in DBC.".into());
             }
+        } else {
+            error!("Failed to receive CAN frame");
+            return Err("Failed to receive CAN frame.".into());
         }
-        Ok(_result)
+
+        Ok(result)
     }
 }
