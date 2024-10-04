@@ -100,12 +100,12 @@ impl CanUtils {
                             _result.insert((&signal).to_string(), value);
                         }
                     } else {
-                        error!("Can't parse signal for {}", _frame.id());
+                        error!("Can't parse signal for {}", signal);
                         return Err("Can't parse signal, please re-check dbc file".into());
                     }
                 }
             } else {
-                error!("Not found msgid {} in dbc file", _frame.id());
+                error!("Not found msgid {:x}-{} in dbc file", _frame.id(), _frame.id());
                 return Err("Can't parse income msg, please re-check filtter and dbc file".into());
             }
         }
