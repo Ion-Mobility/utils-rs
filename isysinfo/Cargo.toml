@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+byteorder = "1.5.0"
 zbus = "4.4.0"
 zvariant = "4.2.0"

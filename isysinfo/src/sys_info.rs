@@ -1,7 +1,92 @@
-use zvariant::SerializeDict;
-use zbus::zvariant::Type;
+use zvariant::Type;
+use zbus::zvariant::{SerializeDict, DeserializeDict, Value, Structure};
+use byteorder::{ByteOrder, LittleEndian};
 
-#[derive(Debug, Clone, SerializeDict, Type)]
+#[derive(Debug, Clone, SerializeDict, DeserializeDict, Type)]
+pub struct WifiInfo {
+    pub ssid: String,
+    pub mac: [u8; 6],
+    pub signal: u8,
+    pub ipv4: [u8; 4],
+    pub ipv6: [u8; 8],
+}
+
+impl WifiInfo {
+    pub fn new() -> Self {
+        WifiInfo {
+            ssid: String::new(),
+            mac: [0u8; 6],
+            signal: 0,
+            ipv4: [0u8; 4],
+            ipv6: [0u8; 8],
+        }
+    }
+
+    pub fn from_vec(bytes: &[u8]) -> Self {
+        let ssid_len = bytes[0] as usize; // Assuming the first byte is the length of the SSID
+        let ssid = String::from_utf8_lossy(&bytes[1..1 + ssid_len]).to_string();
+        let mac = <[u8; 6]>::try_from(&bytes[1 + ssid_len..7 + ssid_len]).unwrap();
+        let signal = bytes[7 + ssid_len];
+        let ipv4 = <[u8; 4]>::try_from(&bytes[8 + ssid_len..12 + ssid_len]).unwrap();
+        let ipv6 = <[u8; 8]>::try_from(&bytes[12 + ssid_len..20 + ssid_len]).unwrap();
+
+        WifiInfo {
+            ssid,
+            mac,
+            signal,
+            ipv4,
+            ipv6,
+        }
+    }
+
+    pub fn to_vec(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.push(self.ssid.len() as u8); // Length of SSID
+        bytes.extend(self.ssid.as_bytes());
+        bytes.extend(&self.mac);
+        bytes.push(self.signal);
+        bytes.extend(&self.ipv4);
+        bytes.extend(&self.ipv6);
+        bytes
+    }
+}
+
+#[derive(Debug, Clone, SerializeDict, DeserializeDict, Type)]
+pub struct LteInfo {
+    ops: String,
+    ipv4: [u8; 4],
+    ipv6: [u8; 8],
+}
+
+impl LteInfo {
+    pub fn new() -> Self {
+        LteInfo {
+            ops: String::new(),
+            ipv4: [0u8; 4],
+            ipv6: [0u8; 8],
+        }
+    }
+
+    pub fn from_vec(bytes: &[u8]) -> Self {
+        let ops_len = bytes[0] as usize; // Assuming the first byte is the length of the operator string
+        let ops = String::from_utf8_lossy(&bytes[1..1 + ops_len]).to_string();
+        let ipv4 = <[u8; 4]>::try_from(&bytes[1 + ops_len..5 + ops_len]).unwrap();
+        let ipv6 = <[u8; 8]>::try_from(&bytes[5 + ops_len..13 + ops_len]).unwrap();
+
+        LteInfo { ops, ipv4, ipv6 }
+    }
+
+    pub fn to_vec(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.push(self.ops.len() as u8); // Length of operator string
+        bytes.extend(self.ops.as_bytes());
+        bytes.extend(&self.ipv4);
+        bytes.extend(&self.ipv6);
+        bytes
+    }
+}
+
+#[derive(Debug, Clone, SerializeDict, DeserializeDict, Type)]
 pub struct SysInfo {
     req: u32,
     wifi_enable: u8,
@@ -10,44 +95,6 @@ pub struct SysInfo {
     track_enable: u8,
     wifi_info: WifiInfo,
     lte_info: LteInfo
-}
-
-#[derive(Debug, Clone, SerializeDict, Type)]
-pub struct WifiInfo {
-    pub ssid: String,
-    pub mac: [u8; 6],
-    pub signal: u8,
-    pub ipv4: [u8; 4],
-    pub ipv6: [u8; 8]
-}
-
-impl WifiInfo {
-    pub fn new() -> Self {
-        WifiInfo{
-            ssid: String::new(),
-            mac: [0u8; 6],
-            signal: 0,
-            ipv4: [0u8; 4],
-            ipv6: [0u8; 8]
-        }
-    }
-}
-
-#[derive(Debug, Clone, SerializeDict, Type)]
-pub struct LteInfo {
-    ops: String,
-    ipv4: [u8;4],
-    ipv6: [u8;8]
-}
-
-impl LteInfo {
-    pub fn new() -> Self {
-        LteInfo{
-            ops: String::new(),
-            ipv4: [0u8; 4],
-            ipv6: [0u8; 8]
-        }
-    }
 }
 
 impl SysInfo {
@@ -62,7 +109,44 @@ impl SysInfo {
             lte_info: LteInfo::new()
         }
     }
+    pub fn from_vec(bytes: &[u8]) -> Self {
+        let mut req = [0u8; 4];
+        let mut wifi_enable = [0u8; 1];
+        let mut lte_enable = [0u8; 1];
+        let mut gps_enable = [0u8; 1];
+        let mut track_enable = [0u8; 1];
 
+        req.copy_from_slice(&bytes[0..4]);
+        wifi_enable.copy_from_slice(&bytes[4..5]);
+        lte_enable.copy_from_slice(&bytes[5..6]);
+        gps_enable.copy_from_slice(&bytes[6..7]);
+        track_enable.copy_from_slice(&bytes[7..8]);
+
+        let wifi_info = WifiInfo::from_vec(&bytes[8..]);
+        let lte_info = LteInfo::from_vec(&bytes[8 + wifi_info.to_vec().len()..]);
+
+        SysInfo {
+            req: LittleEndian::read_u32(&req),
+            wifi_enable: wifi_enable[0],
+            lte_enable: lte_enable[0],
+            gps_enable: gps_enable[0],
+            track_enable: track_enable[0],
+            wifi_info,
+            lte_info,
+        }
+    }
+
+    pub fn to_vec(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend(&self.req.to_le_bytes());
+        bytes.push(self.wifi_enable);
+        bytes.push(self.lte_enable);
+        bytes.push(self.gps_enable);
+        bytes.push(self.track_enable);
+        bytes.extend(self.wifi_info.to_vec());
+        bytes.extend(self.lte_info.to_vec());
+        bytes
+    }
     pub fn get_wifi_cfg(&self) -> u8 {
         return self.wifi_enable;
     }
