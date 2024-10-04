@@ -2,7 +2,8 @@ use gwclient::{
     get_ota_pub_message,
     get_ota_sub_message,
     send_ota_pub_message,
-    send_ota_sub_message
+    send_ota_sub_message,
+    get_isys_info
 };
 use tokio::time::{sleep, Duration};
 
@@ -68,16 +69,17 @@ async fn stub_recv_ota_pub_message() {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    tokio::spawn(async move {
-        tokio::join!(
-            stub_send_ota_sub_message(),
-            stub_recv_ota_sub_message(),
-            stub_send_ota_pub_message(),
-            stub_recv_ota_pub_message(),
-        );
-    });
+    // tokio::spawn(async move {
+    //     tokio::join!(
+    //         stub_send_ota_sub_message(),
+    //         stub_recv_ota_sub_message(),
+    //         stub_send_ota_pub_message(),
+    //         stub_recv_ota_pub_message(),
+    //     );
+    // });
     loop {
-
+        let result = get_isys_info().await;
+        println!("Result: {:?}", result);
         sleep(Duration::from_millis(1000)).await;
     }
 }

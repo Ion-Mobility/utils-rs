@@ -85,7 +85,7 @@ pub async fn send_ota_sub_message(data: Vec<u8>) -> Result<bool> {
 
 pub async fn get_isys_info() -> Result<SysInfo> {
     // Create a connection to the system bus
-    let mut _result = SysInfo::new();
+    let mut _result: Vec<u8> = Vec::new();
     if let Ok(connection) = Connection::system().await {
         if let Ok(proxy) = Proxy::new(
             &connection,
@@ -94,10 +94,9 @@ pub async fn get_isys_info() -> Result<SysInfo> {
             "org.ion.IComGateway",  // Introspection interface
         )
         .await {
-            proxy.call("GetSystemInfo", &()).await?;
+            _result = proxy.call("GetSystemInfo", &()).await?;
+            return Ok(SysInfo::from_vec(&_result));
         }
     }
-
-    // Call the `Introspect` method to retrieve introspection XML
-    Ok(_result)
+    return Err(zbus::fdo::Error::Failed("Can't get isysinfo".into()).into());
 }
