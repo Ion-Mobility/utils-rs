@@ -88,7 +88,7 @@ impl CanUtils {
     }
 
     // The updated get_signals method that returns frames
-    pub async fn get_signals(&mut self) -> HashMap<String, f32> {
+    pub async fn get_signals(&mut self) -> Result<HashMap<String, f32>, Box<dyn std::error::Error>> {
         let mut _result: HashMap<String, f32> = HashMap::new();
         if let Some(Ok(_frame)) = self.can_socket.next().await {
             if let Some(signals) = self.id_and_signal.get(&(&_frame.id() | 0x80000000)) {
@@ -101,12 +101,14 @@ impl CanUtils {
                         }
                     } else {
                         error!("Can't parse signal for {}", _frame.id());
+                        return Err("Can't parse signal, please re-check dbc file".into());
                     }
                 }
             } else {
                 error!("Not found msgid {} in dbc file", _frame.id());
+                return Err("Can't parse income msg, please re-check filtter and dbc file".into());
             }
         }
-        _result
+        Ok(_result)
     }
 }
