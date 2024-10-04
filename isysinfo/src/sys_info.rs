@@ -183,4 +183,10 @@ impl SysInfo {
         self.wifi_info.signal = _new_info.signal;
         self.wifi_info.mac = _new_info.mac;
     }
+    pub fn get_wifi_info(&self) -> WifiInfo {
+        self.wifi_info.clone()
+    }
+    pub fn get_lte_info(&self) -> LteInfo {
+        self.lte_info.clone()
+    }
 }
