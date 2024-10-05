@@ -106,10 +106,10 @@ impl SysInfo {
     pub fn new() -> Self {
         SysInfo {
             req: 0,
-            wifi_enable: 0,
-            lte_enable: 0,
-            gps_enable: 0,
-            track_enable: 0,
+            wifi_enable: 1,
+            lte_enable: 1,
+            gps_enable: 1,
+            track_enable: 1,
             wifi_info: WifiInfo::new(),
             lte_info: LteInfo::new(),
         }
