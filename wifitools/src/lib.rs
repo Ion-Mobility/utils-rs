@@ -335,16 +335,22 @@ pub async fn get_stored_wifi() -> Result<Arc<Mutex<HashMap<String, WifiStoredInf
         }
 
         if wireless_cfg_found {
-            let security: Option<String>;
+            let security: WifiSecurity;
 
             // Access the security settings
             let security_settings = setcfgs.get("802-11-wireless-security");
 
             if let Some(security_settings) = security_settings {
                 let key_mgmt = security_settings.get("key-mgmt");
-                security = key_mgmt.and_then(extract_string);
+                // Map key-mgmt to security type
+                security = match key_mgmt.and_then(extract_string).as_deref() {
+                    Some("wpa-psk") => WifiSecurity::WifiSecWpa,
+                    Some("wpa2-psk") => WifiSecurity::WifiSecWpa23,
+                    Some("none") => WifiSecurity::WifiSecOpen,
+                    _ => WifiSecurity::WifiSecWep, // Use WEP for unknown types
+                };
             } else {
-                security = None;
+                security = WifiSecurity::WifiSecOpen;
                 println!("No wireless-security settings found.");
             }
 
@@ -363,16 +369,13 @@ pub async fn get_stored_wifi() -> Result<Arc<Mutex<HashMap<String, WifiStoredInf
             let default_ssid = "No ID found".to_string();
             let ap_name = ssid.as_deref().unwrap_or(&default_ssid);
             let ap_created = timestamp.map_or("No timestamp found".to_string(), |t| t.to_string());
-            let default_sec = "None".to_string();
-            let _ap_sec = security.as_deref().unwrap_or(&default_sec);
-
             // Store results in the shared HashMap
             let mut results = stored_results.lock().await;
             results.insert(
                 ap_name.to_string(),
                 WifiStoredInfo {
                     created: ap_created,
-                    security: WifiSecurity::WifiSecOpen,
+                    security: security,
                     psk: "".to_string(), // Placeholder for PSK
                 },
             );
