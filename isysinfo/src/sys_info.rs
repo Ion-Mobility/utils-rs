@@ -177,6 +177,13 @@ impl SysInfo {
             self.gps_enable = 0;
         }
     }
+    
+    pub fn update_lte_info(&mut self, _new_info: LteInfo) {
+        self.lte_info.ops = _new_info.ops;
+        self.lte_info.ipv4 = _new_info.ipv4;
+        self.lte_info.ipv6 = _new_info.ipv6;
+    }
+
     pub fn update_wifi_info(&mut self, _new_info: WifiInfo) {
         self.wifi_info.ssid = _new_info.ssid;
         self.wifi_info.ipv4 = _new_info.ipv4;
