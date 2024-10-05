@@ -210,93 +210,6 @@ fn extract_u64(value: &OwnedValue) -> Option<u64> {
     }
 }
 
-// pub async fn get_stored_wifi() -> Result<HashMap<String, WifiStoredInfo>, Box<dyn std::error::Error>>
-// {
-//     let mut stored_results: HashMap<String, WifiStoredInfo> = HashMap::new();
-
-//     // Create a connection to the system bus
-//     let connection = Connection::system().await?;
-
-//     // Initialize the SettingsProxy instance
-//     let settings = SettingsProxy::new(&connection).await?;
-
-//     // Retrieve the list of stored connections
-//     let connections = settings.list_connections().await?;
-
-//     // Iterate over each connection path to get more details
-//     for conn_path in connections {
-//         let setting_connection_proxy =
-//             SettingsConnectionProxy::new_from_path(conn_path, &connection).await?;
-
-//         // Retrieve connection settings
-//         let setcfgs: HashMap<String, HashMap<String, OwnedValue>> =
-//             setting_connection_proxy.get_settings().await?;
-//         let _pathcfg = setting_connection_proxy.filename().await?;
-//         let mut wireless_cfg_found = false;
-//         for (keystr, value) in &setcfgs {
-//             if keystr == "connection" {
-//                 if let Some(type_value) = value.get("type") {
-//                     if let Some(type_str) = extract_string(type_value) {
-//                         if type_str == "802-11-wireless" {
-//                             wireless_cfg_found = true;
-//                             break;
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-
-//         if wireless_cfg_found {
-//             let security: Option<String>;
-
-//             // Access the security settings
-//             let security_settings = setcfgs.get("802-11-wireless-security");
-
-//             if let Some(security_settings) = security_settings {
-//                 let key_mgmt = security_settings.get("key-mgmt");
-//                 security = key_mgmt.and_then(extract_string);
-//             } else {
-//                 security = None;
-//                 println!("No wireless-security settings found.");
-//             }
-
-//             // Extract connection settings
-//             let ssid: Option<String> = setcfgs
-//                 .get("connection")
-//                 .and_then(|c| c.get("id"))
-//                 .and_then(extract_string);
-
-//             let timestamp: Option<u64> = setcfgs
-//                 .get("connection")
-//                 .and_then(|c| c.get("timestamp"))
-//                 .and_then(extract_u64);
-
-//             // Handle default values
-//             let default_ssid = "No ID found".to_string();
-//             let ap_name = ssid.as_deref().unwrap_or(&default_ssid);
-//             let ap_created = timestamp.map_or("No timestamp found".to_string(), |t| t.to_string());
-//             let default_sec = "None".to_string();
-//             let _ap_sec = security.as_deref().unwrap_or(&default_sec);
-
-//             // Print extracted details
-//             // println!("SSID: {}", ap_name);
-//             // println!("Timestamp: {}", ap_created);
-//             // println!("Security: {}", ap_sec);
-//             // println!("Config Path: {}", pathcfg);
-
-//             stored_results.insert(
-//                 ap_name.to_string(),
-//                 WifiStoredInfo {
-//                     created: ap_created,
-//                     security: WifiSecurity::WifiSecOpen,
-//                     psk: "".to_string(), // Placeholder for PSK
-//                 },
-//             );
-//         }
-//     }
-//     Ok(stored_results)
-// }
-
 pub async fn get_stored_wifi() -> Result<Arc<Mutex<HashMap<String, WifiStoredInfo>>>, Box<dyn std::error::Error + Send + Sync>>
 {
     let stored_results: Arc<Mutex<HashMap<String, WifiStoredInfo>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -425,7 +338,7 @@ async fn check_connection_success(
 
         // Check if this is the desired interface
         if device_interface == interface {
-            println!("{:?}", DeviceState::from_u32(device_proxy.state().await?));
+            // println!("{:?}", DeviceState::from_u32(device_proxy.state().await?));
             match DeviceState::from_u32(device_proxy.state().await?) {
                 Some(DeviceState::Activated) => {
                     let settings_proxy = SettingsProxy::new(&connection).await?;
@@ -772,7 +685,7 @@ pub async fn get_ap_info(
             let ssid_option = access_point.ssid().await.unwrap();
             if !ssid_option.is_empty() {
                 let ssid = String::from_utf8_lossy(&ssid_option);
-                println!("SSID: {:?}", ssid);
+                // println!("SSID: {:?}", ssid);
                 let check_result = check_connection_success(interface, &ssid.to_string()).await?;
                 if check_result.0 {
                     return Ok((ssid.to_string(),check_result.1));
