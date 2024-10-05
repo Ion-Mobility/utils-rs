@@ -53,9 +53,9 @@ impl WifiInfo {
 
 #[derive(Debug, Clone, SerializeDict, DeserializeDict, Type)]
 pub struct LteInfo {
-    ops: String,
-    ipv4: [u8; 4],
-    ipv6: [u8; 8],
+    pub ops: String,
+    pub ipv4: [u8; 4],
+    pub ipv6: [u8; 8],
 }
 
 impl LteInfo {
