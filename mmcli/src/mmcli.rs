@@ -5,7 +5,7 @@ use dbus::blocking::BlockingSender;
 use dbus::blocking::stdintf::org_freedesktop_dbus::ObjectManager;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use log::{trace, warn};
+use log::{trace, warn, info, error};
 
 #[derive(Debug)]
 pub enum IonModemCliError {
@@ -288,10 +288,15 @@ impl IonModemCli {
         self.ready
     }
 
-    pub fn setup_modem_enable(&self, status: bool) -> Result<(), IonModemCliError> {
-        // Check if self.modem is empty
+    pub fn setup_modem_enable(&mut self, status: bool) -> Result<(), IonModemCliError> {
+        // Check if the modem path is set
         if self.modem.is_empty() {
-            return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            trace!("Modem is not ready, try to query it");
+            if let Err(_) = self.modem_preparing() {
+                return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            } else {
+                info!("Modem is ready");
+            }
         }
 
         let interface = "org.freedesktop.ModemManager1.Modem";
@@ -311,10 +316,15 @@ impl IonModemCli {
         Ok(())
     }
 
-    pub fn setup_location(&self, sources: u32, signal_location: bool) -> Result<(), IonModemCliError> {
-        // Check if self.modem is empty
+    pub fn setup_location(&mut self, sources: u32, signal_location: bool) -> Result<(), IonModemCliError> {
+        // Check if the modem path is set
         if self.modem.is_empty() {
-            return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            trace!("Modem is not ready, try to query it");
+            if let Err(_) = self.modem_preparing() {
+                return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            } else {
+                info!("Modem is ready");
+            }
         }
 
         let interface = "org.freedesktop.ModemManager1.Modem.Location";
@@ -337,7 +347,16 @@ impl IonModemCli {
     }
 
     // Get the current signal refresh rate
-    pub fn get_signal_refresh_rate(&self) -> Result<u32, IonModemCliError> {
+    pub fn get_signal_refresh_rate(&mut self) -> Result<u32, IonModemCliError> {
+        // Check if the modem path is set
+        if self.modem.is_empty() {
+            trace!("Modem is not ready, try to query it");
+            if let Err(_) = self.modem_preparing() {
+                return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            } else {
+                info!("Modem is ready");
+            }
+        }
         match self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Signal", "Rate") {
             Ok(results) => {
                 for result in results.iter() {
@@ -356,10 +375,15 @@ impl IonModemCli {
     }
 
     // Set the signal refresh rate
-    pub fn setup_signal_refresh_rate(&self, rate: u32) -> Result<(), IonModemCliError> {
-        // Check if self.modem is empty
+    pub fn setup_signal_refresh_rate(&mut self, rate: u32) -> Result<(), IonModemCliError> {
+        // Check if the modem path is set
         if self.modem.is_empty() {
-            return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            trace!("Modem is not ready, try to query it");
+            if let Err(_) = self.modem_preparing() {
+                return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            } else {
+                info!("Modem is ready");
+            }
         }
 
         let interface = "org.freedesktop.ModemManager1.Modem.Signal";
@@ -380,7 +404,16 @@ impl IonModemCli {
     }
 
     // Get the LTE signal strength
-    pub fn get_lte_signal_strength(&self) -> Result<Option<LteSignalStrength>, IonModemCliError> {
+    pub fn get_lte_signal_strength(&mut self) -> Result<Option<LteSignalStrength>, IonModemCliError> {
+        // Check if the modem path is set
+        if self.modem.is_empty() {
+            trace!("Modem is not ready, try to query it");
+            if let Err(_) = self.modem_preparing() {
+                return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            } else {
+                info!("Modem is ready");
+            }
+        }
         match self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Signal", "Lte") {
             Ok(results) => {
                 for result in results.iter() {
@@ -421,9 +454,15 @@ impl IonModemCli {
         Err(IonModemCliError::ModemError("Failed to retrieve LTE signal strength".to_owned()))
     }
 
-    pub fn list_firmware(&self) -> Result<(String, Vec<HashMap<String, MessageItem>>), IonModemCliError> {
+    pub fn list_firmware(&mut self) -> Result<(String, Vec<HashMap<String, MessageItem>>), IonModemCliError> {
+        // Check if the modem path is set
         if self.modem.is_empty() {
-            return Err(IonModemCliError::ResponseError("Modem is not specified".to_owned()));
+            trace!("Modem is not ready, try to query it");
+            if let Err(_) = self.modem_preparing() {
+                return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            } else {
+                info!("Modem is ready");
+            }
         }
 
         let conn = Connection::new_system()
@@ -463,9 +502,15 @@ impl IonModemCli {
         Ok((selected_firmware, installed_firmware))
     }
 
-    pub fn list_profiles(&self) -> Result<Vec<HashMap<String, MessageItem>>, IonModemCliError> {
+    pub fn list_profiles(&mut self) -> Result<Vec<HashMap<String, MessageItem>>, IonModemCliError> {
+        // Check if the modem path is set
         if self.modem.is_empty() {
-            return Err(IonModemCliError::ResponseError("Modem is not specified".to_owned()));
+            trace!("Modem is not ready, try to query it");
+            if let Err(_) = self.modem_preparing() {
+                return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            } else {
+                info!("Modem is ready");
+            }
         }
 
         let conn = Connection::new_system()
@@ -500,49 +545,65 @@ impl IonModemCli {
         }
     }
 
-    // Implement the `set_profile` method
-    // pub fn set_profile(&self, requested_properties: HashMap<String, MessageItem>) -> Result<HashMap<String, MessageItem>, IonModemCliError> {
-    //     if self.modem.is_empty() {
-    //         return Err(IonModemCliError::ResponseError("Modem is not specified".to_owned()));
-    //     }
+    /// Fetch the IMEI from the 3GPP properties.
+    pub fn get_imei(&mut self) -> Result<String, IonModemCliError> {
+        // Check if the modem path is set
+        if self.modem.is_empty() {
+            trace!("Modem is not ready, try to query it");
+            if let Err(_) = self.modem_preparing() {
+                return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            } else {
+                info!("Modem is ready");
+            }
+        }
 
-    //     let conn = Connection::new_system()
-    //         .map_err(|e| IonModemCliError::ConnectionError(format!("Failed to connect to system bus: {}", e)))?;
-        
-    //     let interface = "org.freedesktop.ModemManager1.Modem.Modem3gpp.ProfileManager";
-    //     let method = "Set";
+        // Call the D-Bus method to get the IMEI property
+        match self.get_modem_properties("org.freedesktop.ModemManager1.Modem", "EquipmentIdentifier") {
+            Ok(results) => {
+                for result in results.iter() {
+                    if let MessageItem::Variant(ret_variant) = result {
+                        if let MessageItem::Str(ref ime) = **ret_variant {
+                            return Ok(ime.to_string());
+                        }
+                    }
+                }
+                Err(IonModemCliError::ResponseError("IMEI not found".to_owned()))
+            }
+            Err(e) => {
+                error!("Failed to get IMEI: {:?}", e);
+                Err(e)
+            }
+        }
+    }
 
-    //     // Create MessageItemDict manually
-    //     let mut dict: MessageItemDict = MessageItemDict::new();
+    /// Fetch the operator name from the 3GPP properties.
+    pub fn get_operator_name(&mut self) -> Result<String, IonModemCliError> {
+        // Check if the modem path is set
+        if self.modem.is_empty() {
+            trace!("Modem is not ready, try to query it");
+            if let Err(_) = self.modem_preparing() {
+                return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            } else {
+                info!("Modem is ready");
+            }
+        }
 
-    //     // for (key, value) in requested_properties.into_iter() {
-    //     //     // Convert String to MessageItem::Str
-    //     //     let key_item = MessageItem::Str(key);
-    //     //     dict.insert(key_item, value);
-    //     // }
-        
-    //     // Box the Dict and wrap it in MessageItem::Variant
-    //     let variant_properties = MessageItem::Variant(Box::new(MessageItem::Dict(dict)));
-
-    //     let msg = Message::new_method_call(&self.destination, &self.modem, interface, method)
-    //         .map_err(|e| IonModemCliError::MethodCallError(format!("Failed to create method call: {}", e)))?
-    //         .append1(variant_properties);
-
-    //     let reply = conn.send_with_reply_and_block(msg, Duration::from_secs(2))
-    //         .map_err(|e| IonModemCliError::SendError(format!("Failed to send message: {}", e)))?;
-
-    //     let items = reply.get_items();
-    //     if let Some(MessageItem::Dict(ref dict)) = items.get(1) {
-    //         let mut hashmap = HashMap::new();
-    //         for (key, value) in dict.to_vec() {
-    //             if let MessageItem::Str(ref key_str) = key {
-    //                 hashmap.insert(key_str.to_string(), value);
-    //             }
-    //         }
-    //         Ok(hashmap)
-    //     } else {
-    //         Err(IonModemCliError::ResponseError("Invalid response format".to_owned()))
-    //     }
-    // }
-
+        // Call the D-Bus method to get the operator name
+        match self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Modem3gpp", "OperatorName") {
+            Ok(results) => {
+                for result in results.iter() {
+                    if let MessageItem::Variant(ret_variant) = result {
+                        if let MessageItem::Str(ref dict) = **ret_variant {
+                            return Ok(dict.to_string());
+                        }
+                    }
+                }
+                Err(IonModemCliError::ResponseError("Operator name not found".to_owned()))
+            }
+            Err(e) => {
+                error!("Failed to get operator name: {:?}", e);
+                Err(e)
+            }
+        }
+    }
 }

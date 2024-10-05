@@ -15,23 +15,25 @@ async fn main() -> io::Result<()> {
     console_log.init_logger();
 
     loop {
-        if modem_cli.waiting_for_ready() == false {
-            info!("waiting for LTE Modem Probed");
-        } else {
-            if modem_cli.is_modem_enabled() == false {
-                info!("LTE Modem hasn't enabled, try to enable it!");
-                if let Err(err) = modem_cli.setup_modem_enable(true) {
-                    error!("Failed to perform enable lte modem: {:?}", err);
-                }
-            } else {
-                info!("LTE Modem Enabled, try to setup Network");
-                if let Err(err) = Command::new("lte-setup").output().await {
-                    error!("Failed to perform lte setup action: {:?}", err);
-                } else {
-                    info!("LTE Modem Setup success!");
-                }
-            }
+        // info!("LTE Modem Enabled, try to setup Network");
+        if let Ok(_imei) = modem_cli.get_imei() {
+            info!("Imei: {}", _imei);
         }
+        if let Ok(_ops) = modem_cli.get_operator_name() {
+            info!("Ops: {}", _ops);
+        }
+        // if modem_cli.waiting_for_ready() == false {
+        //     info!("waiting for LTE Modem Probed");
+        // } else {
+        //     if modem_cli.is_modem_enabled() == false {
+        //         info!("LTE Modem hasn't enabled, try to enable it!");
+        //         if let Err(err) = modem_cli.setup_modem_enable(true) {
+        //             error!("Failed to perform enable lte modem: {:?}", err);
+        //         }
+        //     } else {
+
+        //     }
+        // }
         // Perform other non-blocking tasks or simply loop
         let _ = time::sleep(Duration::from_millis(100)).await;
     }
