@@ -9,6 +9,7 @@ pub struct WifiInfo {
     pub signal: u8,
     pub ipv4: [u8; 4],
     pub ipv6: [u8; 8],
+    pub sec: u8, // Security level
 }
 
 impl WifiInfo {
@@ -19,16 +20,18 @@ impl WifiInfo {
             signal: 0,
             ipv4: [0u8; 4],
             ipv6: [0u8; 8],
+            sec: 0, // Initialize security level
         }
     }
 
     pub fn from_vec(bytes: &[u8]) -> Self {
-        let ssid_len = bytes[0] as usize; // Assuming the first byte is the length of the SSID
+        let ssid_len = bytes[0] as usize;
         let ssid = String::from_utf8_lossy(&bytes[1..1 + ssid_len]).to_string();
         let mac = <[u8; 6]>::try_from(&bytes[1 + ssid_len..7 + ssid_len]).unwrap();
         let signal = bytes[7 + ssid_len];
         let ipv4 = <[u8; 4]>::try_from(&bytes[8 + ssid_len..12 + ssid_len]).unwrap();
         let ipv6 = <[u8; 8]>::try_from(&bytes[12 + ssid_len..20 + ssid_len]).unwrap();
+        let sec = bytes[20 + ssid_len];  // Added sec
 
         WifiInfo {
             ssid,
@@ -36,6 +39,7 @@ impl WifiInfo {
             signal,
             ipv4,
             ipv6,
+            sec,  // Assign sec value
         }
     }
 
@@ -47,6 +51,7 @@ impl WifiInfo {
         bytes.push(self.signal);
         bytes.extend(&self.ipv4);
         bytes.extend(&self.ipv6);
+        bytes.push(self.sec);  // Append sec value
         bytes
     }
 }
@@ -68,7 +73,7 @@ impl LteInfo {
     }
 
     pub fn from_vec(bytes: &[u8]) -> Self {
-        let ops_len = bytes[0] as usize; // Assuming the first byte is the length of the operator string
+        let ops_len = bytes[0] as usize;
         let ops = String::from_utf8_lossy(&bytes[1..1 + ops_len]).to_string();
         let ipv4 = <[u8; 4]>::try_from(&bytes[1 + ops_len..5 + ops_len]).unwrap();
         let ipv6 = <[u8; 8]>::try_from(&bytes[5 + ops_len..13 + ops_len]).unwrap();
@@ -94,21 +99,22 @@ pub struct SysInfo {
     gps_enable: u8,
     track_enable: u8,
     wifi_info: WifiInfo,
-    lte_info: LteInfo
+    lte_info: LteInfo,
 }
 
 impl SysInfo {
     pub fn new() -> Self {
-        SysInfo{
+        SysInfo {
             req: 0,
             wifi_enable: 0,
             lte_enable: 0,
             gps_enable: 0,
             track_enable: 0,
             wifi_info: WifiInfo::new(),
-            lte_info: LteInfo::new()
+            lte_info: LteInfo::new(),
         }
     }
+
     pub fn from_vec(bytes: &[u8]) -> Self {
         let mut req = [0u8; 4];
         let mut wifi_enable = [0u8; 1];
@@ -147,52 +153,43 @@ impl SysInfo {
         bytes.extend(self.lte_info.to_vec());
         bytes
     }
+
     pub fn get_wifi_cfg(&self) -> u8 {
-        return self.wifi_enable;
-    }
-    pub fn get_lte_cfg(&self) -> u8 {
-        return self.wifi_enable;
-    }
-    pub fn get_gps_cfg(&self) -> u8 {
-        return self.gps_enable;
-    }
-    pub fn set_wifi_cfg(&mut self, val: f32) {
-        if val != 0.0 {
-            self.wifi_enable = 1;
-        } else {
-            self.wifi_enable = 0;
-        }
-    }
-    pub fn set_lte_cfg(&mut self, val: f32) {
-        if val != 0.0 {
-            self.lte_enable = 1;
-        } else {
-            self.lte_enable = 0;
-        }
-    }
-    pub fn set_gps_cfg(&mut self, val: f32) {
-        if val != 0.0 {
-            self.gps_enable = 1;
-        } else {
-            self.gps_enable = 0;
-        }
-    }
-    
-    pub fn update_lte_info(&mut self, _new_info: LteInfo) {
-        self.lte_info.ops = _new_info.ops;
-        self.lte_info.ipv4 = _new_info.ipv4;
-        self.lte_info.ipv6 = _new_info.ipv6;
+        self.wifi_enable
     }
 
-    pub fn update_wifi_info(&mut self, _new_info: WifiInfo) {
-        self.wifi_info.ssid = _new_info.ssid;
-        self.wifi_info.ipv4 = _new_info.ipv4;
-        self.wifi_info.signal = _new_info.signal;
-        self.wifi_info.mac = _new_info.mac;
+    pub fn get_lte_cfg(&self) -> u8 {
+        self.lte_enable
     }
+
+    pub fn get_gps_cfg(&self) -> u8 {
+        self.gps_enable
+    }
+
+    pub fn set_wifi_cfg(&mut self, val: f32) {
+        self.wifi_enable = if val != 0.0 { 1 } else { 0 };
+    }
+
+    pub fn set_lte_cfg(&mut self, val: f32) {
+        self.lte_enable = if val != 0.0 { 1 } else { 0 };
+    }
+
+    pub fn set_gps_cfg(&mut self, val: f32) {
+        self.gps_enable = if val != 0.0 { 1 } else { 0 };
+    }
+
+    pub fn update_lte_info(&mut self, new_info: LteInfo) {
+        self.lte_info = new_info;
+    }
+
+    pub fn update_wifi_info(&mut self, new_info: WifiInfo) {
+        self.wifi_info = new_info;
+    }
+
     pub fn get_wifi_info(&self) -> WifiInfo {
         self.wifi_info.clone()
     }
+
     pub fn get_lte_info(&self) -> LteInfo {
         self.lte_info.clone()
     }
