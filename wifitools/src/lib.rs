@@ -79,6 +79,7 @@ pub struct WifiStoredInfo {
     pub created: String,
     pub security: WifiSecurity,
     pub psk: String,
+    pub seen_bssid: Vec<String>
 }
 
 pub async fn get_wificmd_pack() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -201,6 +202,18 @@ fn extract_string(value: &OwnedValue) -> Option<String> {
     }
 }
 
+fn extract_string_array(value: &OwnedValue) -> Option<Vec<String>> {
+    if let Ok(array) = value.downcast_ref::<zvariant::Array>() {
+        Some(
+            array
+                .iter()
+                .filter_map(|v| v.downcast_ref::<zvariant::Str>().map(|s| s.to_string()).ok())
+                .collect(),
+        )
+    } else {
+        None
+    }
+}
 // Function to extract a u64 from OwnedValue
 fn extract_u64(value: &OwnedValue) -> Option<u64> {
     if let Ok(v) = <u64>::try_from(value) {
@@ -252,9 +265,14 @@ pub async fn get_stored_wifi() -> Result<Arc<Mutex<HashMap<String, WifiStoredInf
 
             // Access the security settings
             let security_settings = setcfgs.get("802-11-wireless-security");
-
             if let Some(security_settings) = security_settings {
                 let key_mgmt = security_settings.get("key-mgmt");
+                // let mut psk = String::new();
+                // Extract the PSK (if available)
+                // if let Some(psk_value) = security_settings.get("psk") {
+                //     psk = extract_string(psk_value).unwrap_or_default();
+                // }
+                // println!("PSK: {}", psk);
                 // Map key-mgmt to security type
                 security = match key_mgmt.and_then(extract_string).as_deref() {
                     Some("wpa-psk") => WifiSecurity::WifiSecWpa,
@@ -278,6 +296,13 @@ pub async fn get_stored_wifi() -> Result<Arc<Mutex<HashMap<String, WifiStoredInf
                 .and_then(|c| c.get("timestamp"))
                 .and_then(extract_u64);
 
+            // Extract the BSSIDs (optional)
+            let bssids = setcfgs
+            .get("802-11-wireless")
+            .and_then(|w| w.get("seen-bssids"))
+            .and_then(extract_string_array)
+            .unwrap_or_default(); // Default to empty list if not found
+
             // Handle default values
             let default_ssid = "No ID found".to_string();
             let ap_name = ssid.as_deref().unwrap_or(&default_ssid);
@@ -290,6 +315,7 @@ pub async fn get_stored_wifi() -> Result<Arc<Mutex<HashMap<String, WifiStoredInf
                     created: ap_created,
                     security: security,
                     psk: "".to_string(), // Placeholder for PSK
+                    seen_bssid: bssids,
                 },
             );
         }
