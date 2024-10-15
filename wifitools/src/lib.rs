@@ -675,20 +675,23 @@ pub async fn get_ap_info(
 
     match nm.get_device_by_ip_iface(interface).await {
         Ok(wireless_path) => {
-            let wireless_proxy = WirelessProxy::new_from_path(wireless_path, &connection)
-            .await?;
-
-            let access_point_path = wireless_proxy.active_access_point().await;
-            let access_point = AccessPointProxy::new_from_path(access_point_path.unwrap(), &connection)
-            .await?;
-
-            let ssid_option = access_point.ssid().await.unwrap();
-            if !ssid_option.is_empty() {
-                let ssid = String::from_utf8_lossy(&ssid_option);
-                // println!("SSID: {:?}", ssid);
-                let check_result = check_connection_success(interface, &ssid.to_string()).await?;
-                if check_result.0 {
-                    return Ok((ssid.to_string(),check_result.1));
+            if let Ok(wireless_proxy) = WirelessProxy::new_from_path(wireless_path, &connection)
+            .await {
+                if let Ok(access_point_path) = wireless_proxy.active_access_point().await {
+                    if let Ok(access_point) = AccessPointProxy::new_from_path(access_point_path, &connection)
+                    .await {
+                        if let Ok(ssid_option) = access_point.ssid().await {
+                            if !ssid_option.is_empty() {
+                                let ssid = String::from_utf8_lossy(&ssid_option);
+                                // println!("SSID: {:?}", ssid);
+                                let check_result = check_connection_success(interface, &ssid.to_string()).await?;
+                                if check_result.0 {
+                                    return Ok((ssid.to_string(),check_result.1));
+                                }
+                            }
+                        }
+    
+                    }
                 }
             }
         }
