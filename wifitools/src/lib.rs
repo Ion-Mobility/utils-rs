@@ -747,3 +747,44 @@ fn mac_str_to_array(mac: &str) -> Result<[u8; 6], Box<dyn std::error::Error>> {
     
     Ok(mac_bytes)
 }
+
+pub async fn turn_off_wifi(interface: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let connection = Connection::system().await?;
+    let nm = NetworkManagerProxy::new(&connection).await?;
+    
+    // Get the device path using the interface name
+    let device_path = nm.get_device_by_ip_iface(interface).await?;
+    
+    // Create a DeviceProxy for the specific device
+    let device_proxy = DeviceProxy::new_from_path(device_path, &connection).await?;
+    if device_proxy.managed().await? {
+        // Assuming 'managed' controls the device's management state
+        device_proxy.set_managed(false).await?;
+        println!("Wi-Fi radio turned off for interface '{}'", interface);
+    } else {
+        println!("Wifi already off");
+    }
+
+    Ok(())
+}
+
+pub async fn turn_on_wifi(interface: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let connection = Connection::system().await?;
+    let nm = NetworkManagerProxy::new(&connection).await?;
+    
+    // Get the device path using the interface name
+    let device_path = nm.get_device_by_ip_iface(interface).await?;
+    
+    // Create a DeviceProxy for the specific device
+    let device_proxy = DeviceProxy::new_from_path(device_path, &connection).await?;
+    println!("Device State {}", device_proxy.state().await?);
+    // Assuming 'managed' controls the device's management state
+    if !device_proxy.managed().await? {
+        // Assuming 'managed' controls the device's management state
+        device_proxy.set_managed(true).await?;
+        println!("Wi-Fi turned on for interface '{}'", interface);
+    } else {
+        println!("Wifi already on");
+    }
+    Ok(())
+}
