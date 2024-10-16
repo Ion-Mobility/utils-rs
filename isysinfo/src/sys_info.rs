@@ -1,5 +1,5 @@
 use zvariant::Type;
-use zbus::zvariant::{SerializeDict, DeserializeDict, Value, Structure};
+use zbus::zvariant::{SerializeDict, DeserializeDict};
 use byteorder::{ByteOrder, LittleEndian};
 
 #[derive(Debug, Clone, SerializeDict, DeserializeDict, Type)]
@@ -10,6 +10,7 @@ pub struct WifiInfo {
     pub ipv4: [u8; 4],
     pub ipv6: [u8; 8],
     pub sec: u8, // Security level
+    pub internetable: bool
 }
 
 impl WifiInfo {
@@ -21,6 +22,7 @@ impl WifiInfo {
             ipv4: [0u8; 4],
             ipv6: [0u8; 8],
             sec: 0, // Initialize security level
+            internetable: false
         }
     }
 
@@ -31,7 +33,8 @@ impl WifiInfo {
         let signal = bytes[7 + ssid_len];
         let ipv4 = <[u8; 4]>::try_from(&bytes[8 + ssid_len..12 + ssid_len]).unwrap();
         let ipv6 = <[u8; 8]>::try_from(&bytes[12 + ssid_len..20 + ssid_len]).unwrap();
-        let sec = bytes[20 + ssid_len];  // Added sec
+        let sec = bytes[20 + ssid_len];
+        let internetable = bytes[21 + ssid_len] != 0; // Convert byte to bool
 
         WifiInfo {
             ssid,
@@ -39,7 +42,8 @@ impl WifiInfo {
             signal,
             ipv4,
             ipv6,
-            sec,  // Assign sec value
+            sec,
+            internetable,
         }
     }
 
@@ -51,7 +55,8 @@ impl WifiInfo {
         bytes.push(self.signal);
         bytes.extend(&self.ipv4);
         bytes.extend(&self.ipv6);
-        bytes.push(self.sec);  // Append sec value
+        bytes.push(self.sec);
+        bytes.push(self.internetable as u8); // Convert bool to byte
         bytes
     }
 }
@@ -61,6 +66,7 @@ pub struct LteInfo {
     pub ops: String,
     pub ipv4: [u8; 4],
     pub ipv6: [u8; 8],
+    pub internetable: bool
 }
 
 impl LteInfo {
@@ -69,6 +75,7 @@ impl LteInfo {
             ops: String::new(),
             ipv4: [0u8; 4],
             ipv6: [0u8; 8],
+            internetable: false
         }
     }
 
@@ -77,8 +84,14 @@ impl LteInfo {
         let ops = String::from_utf8_lossy(&bytes[1..1 + ops_len]).to_string();
         let ipv4 = <[u8; 4]>::try_from(&bytes[1 + ops_len..5 + ops_len]).unwrap();
         let ipv6 = <[u8; 8]>::try_from(&bytes[5 + ops_len..13 + ops_len]).unwrap();
+        let internetable = bytes[13 + ops_len] != 0; // Convert byte to bool
 
-        LteInfo { ops, ipv4, ipv6 }
+        LteInfo {
+            ops,
+            ipv4,
+            ipv6,
+            internetable,
+        }
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
@@ -87,6 +100,7 @@ impl LteInfo {
         bytes.extend(self.ops.as_bytes());
         bytes.extend(&self.ipv4);
         bytes.extend(&self.ipv6);
+        bytes.push(self.internetable as u8); // Convert bool to byte
         bytes
     }
 }
@@ -193,4 +207,13 @@ impl SysInfo {
     pub fn get_lte_info(&self) -> LteInfo {
         self.lte_info.clone()
     }
+
+    pub fn is_wifi_internet_access(&self) -> bool {
+        self.wifi_info.internetable
+    }
+
+    pub fn is_lte_internet_access(&self) -> bool {
+        self.lte_info.internetable
+    }
+    
 }
