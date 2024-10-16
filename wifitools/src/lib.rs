@@ -710,9 +710,11 @@ pub async fn get_ap_info(
                             if !ssid_option.is_empty() {
                                 let ssid = String::from_utf8_lossy(&ssid_option);
                                 // println!("SSID: {:?}", ssid);
-                                let check_result = check_connection_success(interface, &ssid.to_string()).await?;
-                                if check_result.0 {
-                                    return Ok((ssid.to_string(),check_result.1));
+                                match check_connection_success(interface, &ssid.to_string()).await {
+                                    Ok(_result) => {
+                                        return Ok((ssid.to_string(),_result.1));
+                                    }
+                                    Err(_) => {}
                                 }
                             }
                         }
