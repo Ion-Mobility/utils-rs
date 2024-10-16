@@ -694,7 +694,7 @@ pub async fn remove_stored_wifi(remove_apname: String) -> Result<bool, Box<dyn s
 
 pub async fn get_ap_info(
     interface: &str
-) -> Result<(String, WifiInfo), Box<dyn std::error::Error>> {
+) -> Result<(String, WifiInfo), Box<dyn std::error::Error + Send + Sync>> {
 
     let connection = Connection::system().await?;
     let nm = NetworkManagerProxy::new(&connection).await?;
