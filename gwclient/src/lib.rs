@@ -95,7 +95,12 @@ pub async fn get_isys_info() -> Result<SysInfo> {
         )
         .await {
             _result = proxy.call("GetSystemInfo", &()).await?;
-            let _result_isysinfo = SysInfo::from_vec(&_result);
+            if let Ok(_result_isysinfo) = SysInfo::from_vec(&_result) {
+                return Ok(_result_isysinfo);
+            } else {
+                return Err(zbus::fdo::Error::Failed("Can't parse isysinfo".into()).into());
+            }
+
         }
     }
     return Err(zbus::fdo::Error::Failed("Can't get isysinfo".into()).into());
