@@ -6,7 +6,7 @@ use byteorder::{ByteOrder, LittleEndian};
 pub struct WifiInfo {
     pub ssid: String,
     pub mac: [u8; 6],
-    pub signal: u8,
+    pub signal: f32,
     pub ipv4: [u8; 4],
     pub ipv6: [u8; 8],
     pub sec: u8, // Security level
@@ -18,7 +18,7 @@ impl WifiInfo {
         WifiInfo {
             ssid: String::new(),
             mac: [0u8; 6],
-            signal: 0,
+            signal: 0.0,
             ipv4: [0u8; 4],
             ipv6: [0u8; 8],
             sec: 0, // Initialize security level
@@ -32,7 +32,7 @@ impl WifiInfo {
         }
 
         let ssid_len = bytes[0] as usize;
-        let total_len = 1 + ssid_len + 6 + 1 + 4 + 8 + 1 + 1; // Calculate total required size
+        let total_len = 1 + ssid_len + 6 + 4 + 8 + 1 + 1; // Calculate total required size
 
         if bytes.len() < total_len {
             return Err("Invalid input byte length".to_string());
@@ -41,13 +41,17 @@ impl WifiInfo {
         let ssid = String::from_utf8_lossy(&bytes[1..1 + ssid_len]).to_string();
         let mac = <[u8; 6]>::try_from(&bytes[1 + ssid_len..7 + ssid_len])
             .map_err(|_| "Failed to parse MAC address".to_string())?;
-        let signal = bytes[7 + ssid_len];
-        let ipv4 = <[u8; 4]>::try_from(&bytes[8 + ssid_len..12 + ssid_len])
+
+        // Read signal as f32 from the byte slice
+        let signal_bytes = &bytes[7 + ssid_len..11 + ssid_len];
+        let signal = f32::from_le_bytes(signal_bytes.try_into().map_err(|_| "Failed to parse signal".to_string())?);
+
+        let ipv4 = <[u8; 4]>::try_from(&bytes[11 + ssid_len..15 + ssid_len])
             .map_err(|_| "Failed to parse IPv4 address".to_string())?;
-        let ipv6 = <[u8; 8]>::try_from(&bytes[12 + ssid_len..20 + ssid_len])
+        let ipv6 = <[u8; 8]>::try_from(&bytes[15 + ssid_len..23 + ssid_len])
             .map_err(|_| "Failed to parse IPv6 address".to_string())?;
-        let sec = bytes[20 + ssid_len];
-        let internetable = bytes[21 + ssid_len] != 0;
+        let sec = bytes[23 + ssid_len];
+        let internetable = bytes[24 + ssid_len] != 0;
 
         Ok(WifiInfo {
             ssid,
@@ -65,7 +69,7 @@ impl WifiInfo {
         bytes.push(self.ssid.len() as u8); // Length of SSID
         bytes.extend(self.ssid.as_bytes());
         bytes.extend(&self.mac);
-        bytes.push(self.signal);
+        bytes.extend(self.signal.to_le_bytes()); // Serialize signal as f32
         bytes.extend(&self.ipv4);
         bytes.extend(&self.ipv6);
         bytes.push(self.sec);
@@ -80,7 +84,7 @@ pub struct LteInfo {
     pub ipv4: [u8; 4],
     pub ipv6: [u8; 8],
     pub internetable: bool,
-    pub signal: u8,
+    pub signal: f32,
 }
 
 impl LteInfo {
@@ -90,7 +94,7 @@ impl LteInfo {
             ipv4: [0u8; 4],
             ipv6: [0u8; 8],
             internetable: false,
-            signal: 0,
+            signal: 0.0,
         }
     }
 
@@ -101,17 +105,23 @@ impl LteInfo {
 
         let ops_len = bytes[0] as usize;
         let total_len = 1 + ops_len + 4 + 8 + 1 + 1; // Full size including all fields
+
         if bytes.len() < total_len {
             return Err("Invalid input byte length".to_string());
         }
 
         let ops = String::from_utf8_lossy(&bytes[1..1 + ops_len]).to_string();
+
         let ipv4 = <[u8; 4]>::try_from(&bytes[1 + ops_len..5 + ops_len])
             .map_err(|_| "Failed to parse IPv4 address".to_string())?;
         let ipv6 = <[u8; 8]>::try_from(&bytes[5 + ops_len..13 + ops_len])
             .map_err(|_| "Failed to parse IPv6 address".to_string())?;
+
         let internetable = bytes[13 + ops_len] != 0;
-        let signal = bytes[14 + ops_len];
+
+        // Read signal as f32 from the byte slice
+        let signal_bytes = &bytes[14 + ops_len..18 + ops_len];
+        let signal = f32::from_le_bytes(signal_bytes.try_into().map_err(|_| "Failed to parse signal".to_string())?);
 
         Ok(LteInfo {
             ops,
@@ -129,21 +139,10 @@ impl LteInfo {
         bytes.extend(&self.ipv4);
         bytes.extend(&self.ipv6);
         bytes.push(self.internetable as u8); // Convert bool to byte
-        bytes.push(self.signal); // Add signal value
+        bytes.extend(self.signal.to_le_bytes()); // Serialize signal as f32
         bytes
     }
 }
-
-// #[derive(Debug, Clone, SerializeDict, DeserializeDict, Type)]
-// pub struct SysInfo {
-//     req: u32,
-//     wifi_enable: u8,
-//     lte_enable: u8,
-//     gps_enable: u8,
-//     track_enable: u8,
-//     wifi_info: WifiInfo,
-//     lte_info: LteInfo,
-// }
 
 #[derive(Debug, Clone)]
 pub struct SysInfo {
