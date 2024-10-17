@@ -85,6 +85,7 @@ pub struct LteInfo {
     pub ipv6: [u8; 8],
     pub internetable: bool,
     pub signal: f32,
+    pub gpslocked: bool,
 }
 
 impl LteInfo {
@@ -95,6 +96,7 @@ impl LteInfo {
             ipv6: [0u8; 8],
             internetable: false,
             signal: 0.0,
+            gpslocked: false,
         }
     }
 
@@ -104,24 +106,25 @@ impl LteInfo {
         }
 
         let ops_len = bytes[0] as usize;
-        let total_len = 1 + ops_len + 4 + 8 + 1 + 1; // Full size including all fields
+        let total_len = 1 + ops_len + 4 + 8 + 1 + 4 + 1; // Full size including all fields
 
         if bytes.len() < total_len {
             return Err("Invalid input byte length".to_string());
         }
 
         let ops = String::from_utf8_lossy(&bytes[1..1 + ops_len]).to_string();
-
         let ipv4 = <[u8; 4]>::try_from(&bytes[1 + ops_len..5 + ops_len])
             .map_err(|_| "Failed to parse IPv4 address".to_string())?;
         let ipv6 = <[u8; 8]>::try_from(&bytes[5 + ops_len..13 + ops_len])
             .map_err(|_| "Failed to parse IPv6 address".to_string())?;
-
         let internetable = bytes[13 + ops_len] != 0;
 
         // Read signal as f32 from the byte slice
         let signal_bytes = &bytes[14 + ops_len..18 + ops_len];
         let signal = f32::from_le_bytes(signal_bytes.try_into().map_err(|_| "Failed to parse signal".to_string())?);
+        
+        // Read gpslocked from the next byte
+        let gpslocked = bytes[18 + ops_len] != 0;
 
         Ok(LteInfo {
             ops,
@@ -129,6 +132,7 @@ impl LteInfo {
             ipv6,
             internetable,
             signal,
+            gpslocked,
         })
     }
 
@@ -140,6 +144,7 @@ impl LteInfo {
         bytes.extend(&self.ipv6);
         bytes.push(self.internetable as u8); // Convert bool to byte
         bytes.extend(self.signal.to_le_bytes()); // Serialize signal as f32
+        bytes.push(self.gpslocked as u8); // Convert gpslocked to byte
         bytes
     }
 }
