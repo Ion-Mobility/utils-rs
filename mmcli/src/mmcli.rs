@@ -6,6 +6,7 @@ use dbus::blocking::stdintf::org_freedesktop_dbus::ObjectManager;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use log::{trace, warn, info, error};
+use std::convert::TryInto;
 
 #[derive(Debug)]
 pub enum IonModemCliError {
@@ -249,6 +250,101 @@ impl IonModemCli {
 
         nmea_str
     }
+    
+    pub fn is_gps_lock(&mut self) -> Result<bool, IonModemCliError> {
+        // Check if the modem path is set
+        if self.modem.is_empty() {
+            trace!("Modem is not ready, trying to query it");
+            if self.modem_preparing().is_err() {
+                return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            } else {
+                info!("Modem is ready");
+            }
+        }
+    
+        if self.is_location_enabled() {
+            // Connect to the system bus
+            let connection = Connection::new_system().expect("D-Bus connection failed");
+    
+            // Specify the interface and method to call for getting location
+            let interface = "org.freedesktop.ModemManager1.Modem.Location";
+            let gps_method = "GetLocation";
+    
+            // Prepare the D-Bus message
+            let msg = Message::new_method_call(&self.destination, &self.modem, interface, gps_method)
+                .expect("Failed to create method call");
+    
+            // Send the message and await the response
+            match connection.send_with_reply_and_block(msg, Duration::from_secs(2)) {
+                Ok(result) => {
+                    // Parse the response to get the items
+                    let responds: Vec<MessageItem> = result.get_items();
+                    let mut data: HashMap<String, f32> = HashMap::new();
+
+                    for respond in responds.iter() {
+                        if let MessageItem::Dict(dict) = respond {
+                            let items = dict.to_vec();
+                            for (key, value) in items {
+                                if let MessageItem::UInt32(id) = key {
+                                    if id == 2 {
+                                        // Create a HashMap to store the parsed values
+                                        if let MessageItem::Variant(inner_dict) = value {
+                                            if let MessageItem::Dict(_dict) = *inner_dict {
+                                                for (key, value) in _dict.to_vec() {
+                                                    match key {
+                                                        MessageItem::Str(_signature) => {
+                                                            match _signature.as_str() {
+                                                                "longitude" => {
+                                                                    if let MessageItem::Variant(item_value) = value {
+                                                                        // println!("Sig {} {}", _signature, _longitude);
+                                                                        if let MessageItem::Double(_longitude) = *item_value {
+                                                                            data.insert("longitude".to_string(), _longitude as f32);
+                                                                        }
+                                                                    }
+                                                                },
+                                                                "latitude" => {
+                                                                    if let MessageItem::Variant(item_value) = value {
+                                                                        // println!("Sig {} {}", _signature, _longitude);
+                                                                        if let MessageItem::Double(_latitude) = *item_value {
+                                                                            data.insert("latitude".to_string(), _latitude as f32);
+                                                                        }
+                                                                    }
+                                                                },
+                                                                "altitude" => {
+                                                                    if let MessageItem::Variant(item_value) = value {
+                                                                        // println!("Sig {} {}", _signature, _longitude);
+                                                                        if let MessageItem::Double(_altitude) = *item_value {
+                                                                            data.insert("altitude".to_string(), _altitude as f32);
+                                                                        }
+                                                                    }
+                                                                },
+                                                                _ => {}
+                                                            }
+                                                        },
+                                                        _ => {}
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        // Check if GPS lock conditions are met (e.g., valid coordinates)
+                                        if let Some(longitude) = data.get("longitude") {
+                                                if let Some(latitude) = data.get("latitude") {
+                                                    return Ok(*longitude != 0.0 && *latitude != 0.0);
+                                                }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    trace!("Failed to get location: {:?}", e);
+                }
+            }
+        }
+        Ok(false)
+    }
 
     pub fn is_ready(&self) -> bool {
         self.ready
@@ -345,7 +441,7 @@ impl IonModemCli {
     
         Ok(())
     }
-
+    
     // Get the current signal refresh rate
     pub fn get_signal_refresh_rate(&mut self) -> Result<u32, IonModemCliError> {
         // Check if the modem path is set
