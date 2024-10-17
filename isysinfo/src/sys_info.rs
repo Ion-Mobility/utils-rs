@@ -10,7 +10,7 @@ pub struct WifiInfo {
     pub ipv4: [u8; 4],
     pub ipv6: [u8; 8],
     pub sec: u8, // Security level
-    pub internetable: bool
+    pub internetable: bool,
 }
 
 impl WifiInfo {
@@ -22,21 +22,34 @@ impl WifiInfo {
             ipv4: [0u8; 4],
             ipv6: [0u8; 8],
             sec: 0, // Initialize security level
-            internetable: false
+            internetable: false,
         }
     }
 
-    pub fn from_vec(bytes: &[u8]) -> Self {
-        let ssid_len = bytes[0] as usize;
-        let ssid = String::from_utf8_lossy(&bytes[1..1 + ssid_len]).to_string();
-        let mac = <[u8; 6]>::try_from(&bytes[1 + ssid_len..7 + ssid_len]).unwrap();
-        let signal = bytes[7 + ssid_len];
-        let ipv4 = <[u8; 4]>::try_from(&bytes[8 + ssid_len..12 + ssid_len]).unwrap();
-        let ipv6 = <[u8; 8]>::try_from(&bytes[12 + ssid_len..20 + ssid_len]).unwrap();
-        let sec = bytes[20 + ssid_len];
-        let internetable = bytes[21 + ssid_len] != 0; // Convert byte to bool
+    pub fn from_vec(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.is_empty() {
+            return Err("Input bytes are empty".to_string());
+        }
 
-        WifiInfo {
+        let ssid_len = bytes[0] as usize;
+        let total_len = 1 + ssid_len + 6 + 1 + 4 + 8 + 1 + 1; // Calculate total required size
+
+        if bytes.len() < total_len {
+            return Err("Invalid input byte length".to_string());
+        }
+
+        let ssid = String::from_utf8_lossy(&bytes[1..1 + ssid_len]).to_string();
+        let mac = <[u8; 6]>::try_from(&bytes[1 + ssid_len..7 + ssid_len])
+            .map_err(|_| "Failed to parse MAC address".to_string())?;
+        let signal = bytes[7 + ssid_len];
+        let ipv4 = <[u8; 4]>::try_from(&bytes[8 + ssid_len..12 + ssid_len])
+            .map_err(|_| "Failed to parse IPv4 address".to_string())?;
+        let ipv6 = <[u8; 8]>::try_from(&bytes[12 + ssid_len..20 + ssid_len])
+            .map_err(|_| "Failed to parse IPv6 address".to_string())?;
+        let sec = bytes[20 + ssid_len];
+        let internetable = bytes[21 + ssid_len] != 0;
+
+        Ok(WifiInfo {
             ssid,
             mac,
             signal,
@@ -44,7 +57,7 @@ impl WifiInfo {
             ipv6,
             sec,
             internetable,
-        }
+        })
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
@@ -66,7 +79,8 @@ pub struct LteInfo {
     pub ops: String,
     pub ipv4: [u8; 4],
     pub ipv6: [u8; 8],
-    pub internetable: bool
+    pub internetable: bool,
+    pub signal: u8,
 }
 
 impl LteInfo {
@@ -75,23 +89,37 @@ impl LteInfo {
             ops: String::new(),
             ipv4: [0u8; 4],
             ipv6: [0u8; 8],
-            internetable: false
+            internetable: false,
+            signal: 0,
         }
     }
 
-    pub fn from_vec(bytes: &[u8]) -> Self {
-        let ops_len = bytes[0] as usize;
-        let ops = String::from_utf8_lossy(&bytes[1..1 + ops_len]).to_string();
-        let ipv4 = <[u8; 4]>::try_from(&bytes[1 + ops_len..5 + ops_len]).unwrap();
-        let ipv6 = <[u8; 8]>::try_from(&bytes[5 + ops_len..13 + ops_len]).unwrap();
-        let internetable = bytes[13 + ops_len] != 0; // Convert byte to bool
+    pub fn from_vec(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.is_empty() {
+            return Err("Input bytes are empty".to_string());
+        }
 
-        LteInfo {
+        let ops_len = bytes[0] as usize;
+        let total_len = 1 + ops_len + 4 + 8 + 1 + 1; // Full size including all fields
+        if bytes.len() < total_len {
+            return Err("Invalid input byte length".to_string());
+        }
+
+        let ops = String::from_utf8_lossy(&bytes[1..1 + ops_len]).to_string();
+        let ipv4 = <[u8; 4]>::try_from(&bytes[1 + ops_len..5 + ops_len])
+            .map_err(|_| "Failed to parse IPv4 address".to_string())?;
+        let ipv6 = <[u8; 8]>::try_from(&bytes[5 + ops_len..13 + ops_len])
+            .map_err(|_| "Failed to parse IPv6 address".to_string())?;
+        let internetable = bytes[13 + ops_len] != 0;
+        let signal = bytes[14 + ops_len];
+
+        Ok(LteInfo {
             ops,
             ipv4,
             ipv6,
             internetable,
-        }
+            signal,
+        })
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
@@ -101,19 +129,31 @@ impl LteInfo {
         bytes.extend(&self.ipv4);
         bytes.extend(&self.ipv6);
         bytes.push(self.internetable as u8); // Convert bool to byte
+        bytes.push(self.signal); // Add signal value
         bytes
     }
 }
 
-#[derive(Debug, Clone, SerializeDict, DeserializeDict, Type)]
+// #[derive(Debug, Clone, SerializeDict, DeserializeDict, Type)]
+// pub struct SysInfo {
+//     req: u32,
+//     wifi_enable: u8,
+//     lte_enable: u8,
+//     gps_enable: u8,
+//     track_enable: u8,
+//     wifi_info: WifiInfo,
+//     lte_info: LteInfo,
+// }
+
+#[derive(Debug, Clone)]
 pub struct SysInfo {
-    req: u32,
-    wifi_enable: u8,
-    lte_enable: u8,
-    gps_enable: u8,
-    track_enable: u8,
-    wifi_info: WifiInfo,
-    lte_info: LteInfo,
+    pub req: u32,
+    pub wifi_enable: u8,
+    pub lte_enable: u8,
+    pub gps_enable: u8,
+    pub track_enable: u8,
+    pub wifi_info: WifiInfo,
+    pub lte_info: LteInfo,
 }
 
 impl SysInfo {
@@ -129,31 +169,34 @@ impl SysInfo {
         }
     }
 
-    pub fn from_vec(bytes: &[u8]) -> Self {
-        let mut req = [0u8; 4];
-        let mut wifi_enable = [0u8; 1];
-        let mut lte_enable = [0u8; 1];
-        let mut gps_enable = [0u8; 1];
-        let mut track_enable = [0u8; 1];
+    pub fn from_vec(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.len() < 8 {
+            return Err("Input byte slice is too short".to_string());
+        }
 
-        req.copy_from_slice(&bytes[0..4]);
-        wifi_enable.copy_from_slice(&bytes[4..5]);
-        lte_enable.copy_from_slice(&bytes[5..6]);
-        gps_enable.copy_from_slice(&bytes[6..7]);
-        track_enable.copy_from_slice(&bytes[7..8]);
+        let req = LittleEndian::read_u32(&bytes[0..4]);
+        let wifi_enable = bytes[4];
+        let lte_enable = bytes[5];
+        let gps_enable = bytes[6];
+        let track_enable = bytes[7];
 
-        let wifi_info = WifiInfo::from_vec(&bytes[8..]);
-        let lte_info = LteInfo::from_vec(&bytes[8 + wifi_info.to_vec().len()..]);
+        let wifi_info_start = 8;
+        let wifi_info = WifiInfo::from_vec(&bytes[wifi_info_start..])
+            .map_err(|e| format!("Failed to parse WifiInfo: {}", e))?;
 
-        SysInfo {
-            req: LittleEndian::read_u32(&req),
-            wifi_enable: wifi_enable[0],
-            lte_enable: lte_enable[0],
-            gps_enable: gps_enable[0],
-            track_enable: track_enable[0],
+        let lte_info_start = wifi_info_start + wifi_info.to_vec().len();
+        let lte_info = LteInfo::from_vec(&bytes[lte_info_start..])
+            .map_err(|e| format!("Failed to parse LteInfo: {}", e))?;
+
+        Ok(SysInfo {
+            req,
+            wifi_enable,
+            lte_enable,
+            gps_enable,
+            track_enable,
             wifi_info,
             lte_info,
-        }
+        })
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
