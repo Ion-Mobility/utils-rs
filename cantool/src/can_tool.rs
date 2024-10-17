@@ -83,38 +83,109 @@ impl CanUtils {
         }
     }
 
-    /// Asynchronously fetches signals from CAN frames
+    /// Restarts the CAN socket
+    async fn restart_socket(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        loop {
+            match CANSocket::open(&self.canport) {
+                Ok(socket) => {
+                    self.can_socket = socket;
+                    info!("Successfully restarted CAN socket.");
+                    
+                    // Reapply filters if necessary
+                    if !self.filters.is_empty() {
+                        if let Err(e) = self.can_socket.set_filter(&self.filters) {
+                            error!("Failed to reapply CAN filters: {}", e);
+                            return Err(Box::new(e));
+                        }
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    error!("Failed to restart CAN socket: {}. Retrying in 1 second...", e);
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }
+
+    // /// Asynchronously fetches signals from CAN frames
+    // pub async fn get_signals(&mut self) -> Result<HashMap<String, f32>, Box<dyn std::error::Error + Send + Sync>> {
+    //     let mut result: HashMap<String, f32> = HashMap::new();
+
+    //     // Asynchronously receive the next CAN frame
+    //     if let Some(Ok(frame)) = self.can_socket.next().await {
+    //         let frame_id = frame.id() | 0x80000000;
+
+    //         if let Some(signals) = self.id_and_signal.get(&frame_id) {
+    //             for signal in signals {
+    //                 if let Some(signal_info) = self.can_info.get_spn(signal) {
+    //                     let mut can_padded_msg = [0u8; 8];
+    //                     can_padded_msg[..frame.data().len()].copy_from_slice(&frame.data());
+
+    //                     if let Some(value) = signal_info.parse_message(&can_padded_msg) {
+    //                         result.insert(signal.clone(), value);
+    //                     } else {
+    //                         error!("Failed to parse message for signal: {}", signal);
+    //                         return Err("Failed to parse message, please check the DBC file.".into());
+    //                     }
+    //                 } else {
+    //                     error!("Signal not found in DBC: {}", signal);
+    //                     return Err("Signal not found in DBC.".into());
+    //                 }
+    //             }
+    //         } else {
+    //             error!("Message ID {:x} not found in DBC", frame.id());
+    //             return Err("Message ID not found in DBC.".into());
+    //         }
+    //     } else {
+    //         error!("Failed to receive CAN frame");
+    //         return Err("Failed to receive CAN frame.".into());
+    //     }
+
+    //     Ok(result)
+    // }
+    /// Asynchronously fetches signals from CAN frames with socket restart logic
     pub async fn get_signals(&mut self) -> Result<HashMap<String, f32>, Box<dyn std::error::Error + Send + Sync>> {
         let mut result: HashMap<String, f32> = HashMap::new();
 
-        // Asynchronously receive the next CAN frame
-        if let Some(Ok(frame)) = self.can_socket.next().await {
-            let frame_id = frame.id() | 0x80000000;
+        loop {
+            match self.can_socket.next().await {
+                Some(Ok(frame)) => {
+                    let frame_id = frame.id() | 0x80000000;
 
-            if let Some(signals) = self.id_and_signal.get(&frame_id) {
-                for signal in signals {
-                    if let Some(signal_info) = self.can_info.get_spn(signal) {
-                        let mut can_padded_msg = [0u8; 8];
-                        can_padded_msg[..frame.data().len()].copy_from_slice(&frame.data());
+                    if let Some(signals) = self.id_and_signal.get(&frame_id) {
+                        for signal in signals {
+                            if let Some(signal_info) = self.can_info.get_spn(signal) {
+                                let mut can_padded_msg = [0u8; 8];
+                                can_padded_msg[..frame.data().len()].copy_from_slice(&frame.data());
 
-                        if let Some(value) = signal_info.parse_message(&can_padded_msg) {
-                            result.insert(signal.clone(), value);
-                        } else {
-                            error!("Failed to parse message for signal: {}", signal);
-                            return Err("Failed to parse message, please check the DBC file.".into());
+                                if let Some(value) = signal_info.parse_message(&can_padded_msg) {
+                                    result.insert(signal.clone(), value);
+                                } else {
+                                    error!("Failed to parse message for signal: {}", signal);
+                                    return Err("Failed to parse message, please check the DBC file.".into());
+                                }
+                            } else {
+                                error!("Signal not found in DBC: {}", signal);
+                                return Err("Signal not found in DBC.".into());
+                            }
                         }
                     } else {
-                        error!("Signal not found in DBC: {}", signal);
-                        return Err("Signal not found in DBC.".into());
+                        error!("Message ID {:x} not found in DBC", frame.id());
+                        return Err("Message ID not found in DBC.".into());
                     }
+                    break; // Exit loop on successful frame reception
                 }
-            } else {
-                error!("Message ID {:x} not found in DBC", frame.id());
-                return Err("Message ID not found in DBC.".into());
+                Some(Err(e)) => {
+                    error!("Failed to receive CAN frame: {}. Attempting socket restart...", e);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                    self.restart_socket().await?; // Restart the socket and retry
+                }
+                None => {
+                    error!("No more frames available from the CAN socket.");
+                    return Err("No more frames available.".into());
+                }
             }
-        } else {
-            error!("Failed to receive CAN frame");
-            return Err("Failed to receive CAN frame.".into());
         }
 
         Ok(result)
