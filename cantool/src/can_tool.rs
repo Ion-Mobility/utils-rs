@@ -155,13 +155,57 @@ impl CanUtils {
                     return Err("No more frames available.".into());
                 }
                 Err(_) => {
-                    warn!("Timeout occurred. Restarting CAN socket...");
-                    // self.restart_socket().await?; // Restart the socket on timeout
+                    warn!("CAN Underun!!!");
                     return Err("No more frames available.".into());
                 }
             }
         }
 
         Ok(result)
+    }
+
+    /// Asynchronously fetches signals from CAN frames with socket restart logic and timeout
+    pub async fn try_get_signals(
+        &mut self,
+    ) -> Result<HashMap<String, f32>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut result: HashMap<String, f32> = HashMap::new();
+        loop {
+            // Use the `timeout` function with the resolved duration
+            let frame_result = self.can_socket.try_next().await;
+            match frame_result {
+                Ok(Some(_frame)) => {
+                    let frame_id = _frame.id() | 0x80000000;
+                    if let Some(signals) = self.id_and_signal.get(&frame_id) {
+                        for signal in signals {
+                            if let Some(signal_info) = self.can_info.get_spn(signal) {
+                                let mut can_padded_msg = [0u8; 8];
+                                can_padded_msg[.._frame.data().len()].copy_from_slice(&_frame.data());
+
+                                if let Some(value) = signal_info.parse_message(&can_padded_msg) {
+                                    result.insert(signal.clone(), value);
+                                } else {
+                                    error!("Failed to parse message for signal: {}", signal);
+                                    return Err("Failed to parse message, please check the DBC file.".into());
+                                }
+                            } else {
+                                error!("Signal not found in DBC: {}", signal);
+                                return Err("Signal not found in DBC.".into());
+                            }
+                        }
+                        return Ok(result);
+                    } else {
+                        error!("Message ID {:x} not found in DBC", _frame.id());
+                        return Err("Message ID not found in DBC.".into());
+                    }
+                }
+                Ok(None) => {
+                    return Err("No more frames available.".into());
+                }
+                Err(_e) => {
+                    error!("Failed to receive CAN frame: {}. Attempting socket restart...", _e);
+                    return Err("Failed to receive CAN frame".into());
+                }
+            }
+        }
     }
 }
