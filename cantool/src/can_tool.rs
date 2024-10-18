@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use canparse::pgn::{ParseMessage, PgnLibrary};
 use tokio::time::Duration;
-use tokio_socketcan::{CANFilter, CANSocket, CANFrame};
+use tokio_socketcan::{CANFilter, CANSocket, CANFrame, Error};
 use futures_util::{stream::StreamExt, TryStreamExt};
 
 const CAN_RECV_TIMEOUT_S: u64 = 10;
@@ -202,7 +202,8 @@ impl CanUtils {
                     return Err("No more frames available.".into());
                 }
                 Err(_e) => {
-                    error!("Failed to receive CAN frame: {}. Attempting socket restart...", _e);
+                    error!("Failed to receive CAN frame: {}, sleep a bit", _e);
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                     return Err("Failed to receive CAN frame".into());
                 }
             }
