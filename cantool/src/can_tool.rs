@@ -156,7 +156,8 @@ impl CanUtils {
                 }
                 Err(_) => {
                     warn!("Timeout occurred. Restarting CAN socket...");
-                    self.restart_socket().await?; // Restart the socket on timeout
+                    // self.restart_socket().await?; // Restart the socket on timeout
+                    return Err("No more frames available.".into());
                 }
             }
         }
