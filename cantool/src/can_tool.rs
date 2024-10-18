@@ -6,8 +6,8 @@ use canparse::pgn::{ParseMessage, PgnLibrary};
 use tokio::time::Duration;
 use tokio_socketcan::{CANFilter, CANSocket, CANFrame};
 use futures_util::{stream::StreamExt, TryStreamExt};
-use std::io::Error;
 
+const CAN_RECV_TIMEOUT_S: u64 = 10;
 
 #[derive(Debug)]
 pub struct CanUtils {
@@ -111,15 +111,11 @@ impl CanUtils {
     /// Asynchronously fetches signals from CAN frames with socket restart logic and timeout
     pub async fn get_signals(
         &mut self,
-        timeout_duration: Option<Duration>, // Option to accept user-defined timeout
     ) -> Result<HashMap<String, f32>, Box<dyn std::error::Error + Send + Sync>> {
-        // Use the user-provided timeout or fallback to 100ms
-        let timeout_duration = timeout_duration.unwrap_or(Duration::from_millis(100));
         let mut result: HashMap<String, f32> = HashMap::new();
-
         loop {
             // Use the `timeout` function with the resolved duration
-            let frame_result = tokio::time::timeout(timeout_duration, self.can_socket.next()).await;
+            let frame_result = tokio::time::timeout(tokio::time::Duration::from_secs(CAN_RECV_TIMEOUT_S), self.can_socket.next()).await;
 
             match frame_result {
                 Ok(Some(Ok(frame))) => {
