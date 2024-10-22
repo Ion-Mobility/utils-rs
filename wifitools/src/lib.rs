@@ -130,11 +130,11 @@ pub async fn scan_wifi(
     let wireless_proxy = WirelessProxy::new_from_path(wireless_path.clone(), &connection).await?;
 
     // Create an empty HashMap for scan options
-    let mut scan_options: HashMap<&str, zbus::zvariant::Value<'_>> = HashMap::new();
-    scan_options.insert("rescan", Value::Bool(true)); // 'true' as 1 (U8 type)
+    //let mut scan_options: HashMap<&str, zbus::zvariant::Value<'_>> = HashMap::new();
+    //scan_options.insert("rescan", Value::Bool(true)); // 'true' as 1 (U8 type)
 
     // Request a Wi-Fi scan
-    wireless_proxy.request_scan(scan_options).await?;
+    //wireless_proxy.request_scan(scan_options).await?;
 
     // Poll for scan results
     loop {
