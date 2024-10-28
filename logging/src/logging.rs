@@ -67,6 +67,8 @@ impl MyLogging {
             LevelFilter::Info
         } else if args.contains(&"--warning".to_string()) {
             LevelFilter::Warn
+        } else if args.contains(&"--trace".to_string()) {
+            LevelFilter::Trace
         } else {
             //NO user setting indication
             LevelFilter::Off
