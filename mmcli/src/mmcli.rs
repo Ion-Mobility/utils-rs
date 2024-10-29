@@ -251,6 +251,22 @@ impl IonModemCli {
         nmea_str
     }
     
+    pub fn is_nmea_income(&mut self) -> Result<bool, IonModemCliError> {
+        // Check if the modem path is set
+        if self.modem.is_empty() {
+            trace!("Modem is not ready, trying to query it");
+            if self.modem_preparing().is_err() {
+                return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+            } else {
+                info!("Modem is ready");
+            }
+        }
+        if self.get_location().is_empty() {
+            return Ok(false)
+        }
+        Ok(true)
+    }
+    
     pub fn is_gps_lock(&mut self) -> Result<bool, IonModemCliError> {
         // Check if the modem path is set
         if self.modem.is_empty() {
