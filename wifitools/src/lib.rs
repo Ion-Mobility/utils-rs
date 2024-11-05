@@ -134,7 +134,10 @@ pub async fn scan_wifi(
     scan_options.insert("rescan", Value::Bool(true)); // 'true' as 1 (U8 type)
 
     // Request a Wi-Fi scan
-    let _ = wireless_proxy.request_scan(scan_options).await;
+    if let Ok(_) = wireless_proxy.request_scan(scan_options).await {
+        // Scan success wait for APs list updated
+        sleep(Duration::from_secs(1)).await;
+    } // else don't need to wait because rescan already did before
 
     // Poll for scan results
     loop {
