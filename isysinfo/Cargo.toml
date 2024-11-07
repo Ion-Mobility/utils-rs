@@ -5,5 +5,6 @@ edition = "2021"
 
 [dependencies]
 byteorder = "1.5.0"
+tokio = { version = "1.41.0", features = ["full"] }
 zbus = "4.4.0"
 zvariant = "4.2.0"

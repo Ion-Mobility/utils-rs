@@ -78,6 +78,7 @@ impl WifiInfo {
         bytes.extend(&self.ipv6);
         bytes.push(self.sec);
         bytes.push(self.internetable as u8); // Convert bool to byte
+        // println!("WIFI Info to_vec {} bytes", bytes.len());
         bytes
     }
 }
@@ -151,6 +152,7 @@ impl LteInfo {
         bytes.push(self.internetable as u8); // Convert bool to byte
         bytes.extend(self.signal.to_le_bytes()); // Serialize signal as f32
         bytes.push(self.gpslocked as u8); // Convert gpslocked to byte
+        // println!("LTE Info to_vec {} bytes", bytes.len());
         bytes
     }
 }
@@ -185,12 +187,13 @@ impl SysInfo {
         }
     }
     pub fn size() -> usize {
-        mem::size_of::<WifiInfo>()
+        55
     }
     pub fn from_vec(bytes: &[u8]) -> Result<Self, String> {
-        let min_length = SysInfo::size() + WifiInfo::size() + LteInfo::size();
+        let min_length = SysInfo::size();
 
         if bytes.len() < min_length {
+            eprintln!("Input byte len to short {}/{}", bytes.len(), min_length);
             return Err("Input byte slice is too short".to_string());
         }
 
@@ -237,6 +240,8 @@ impl SysInfo {
         bytes.push(self.bike_cmd);
         bytes.extend(self.wifi_info.to_vec());
         bytes.extend(self.lte_info.to_vec());
+        // println!("iSYSINFO Info to_vec {} bytes, {}", bytes.len(), SysInfo::size());
+
         bytes
     }
 
