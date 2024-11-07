@@ -1,7 +1,7 @@
 use zvariant::Type;
 use zbus::zvariant::{SerializeDict, DeserializeDict};
 use byteorder::{ByteOrder, LittleEndian};
-
+use std::mem;
 #[derive(Debug, Clone, SerializeDict, DeserializeDict, Type)]
 pub struct WifiInfo {
     pub ssid: String,
@@ -24,6 +24,10 @@ impl WifiInfo {
             sec: 0, // Initialize security level
             internetable: false,
         }
+    }
+    
+    pub fn size() -> usize {
+        mem::size_of::<WifiInfo>()
     }
 
     pub fn from_vec(bytes: &[u8]) -> Result<Self, String> {
@@ -99,7 +103,9 @@ impl LteInfo {
             gpslocked: false,
         }
     }
-
+    fn size() -> usize {
+        mem::size_of::<LteInfo>()
+    }
     pub fn from_vec(bytes: &[u8]) -> Result<Self, String> {
         if bytes.is_empty() {
             return Err("Input bytes are empty".to_string());
@@ -156,6 +162,9 @@ pub struct SysInfo {
     pub lte_enable: u8,
     pub gps_enable: u8,
     pub track_enable: u8,
+    pub bike_state: u8,
+    pub bike_locked: u8,
+    pub bike_cmd: u8,
     pub wifi_info: WifiInfo,
     pub lte_info: LteInfo,
 }
@@ -168,13 +177,20 @@ impl SysInfo {
             lte_enable: 1,
             gps_enable: 1,
             track_enable: 1,
+            bike_state: 0,
+            bike_locked: 1,
+            bike_cmd: 0,
             wifi_info: WifiInfo::new(),
             lte_info: LteInfo::new(),
         }
     }
-
+    pub fn size() -> usize {
+        mem::size_of::<WifiInfo>()
+    }
     pub fn from_vec(bytes: &[u8]) -> Result<Self, String> {
-        if bytes.len() < 8 {
+        let min_length = SysInfo::size() + WifiInfo::size() + LteInfo::size();
+
+        if bytes.len() < min_length {
             return Err("Input byte slice is too short".to_string());
         }
 
@@ -183,8 +199,11 @@ impl SysInfo {
         let lte_enable = bytes[5];
         let gps_enable = bytes[6];
         let track_enable = bytes[7];
+        let bike_state = bytes[8];
+        let bike_locked = bytes[9];
+        let bike_cmd = bytes[10];
 
-        let wifi_info_start = 8;
+        let wifi_info_start = 11;
         let wifi_info = WifiInfo::from_vec(&bytes[wifi_info_start..])
             .map_err(|e| format!("Failed to parse WifiInfo: {}", e))?;
 
@@ -198,6 +217,9 @@ impl SysInfo {
             lte_enable,
             gps_enable,
             track_enable,
+            bike_state,
+            bike_locked,
+            bike_cmd,
             wifi_info,
             lte_info,
         })
@@ -210,6 +232,9 @@ impl SysInfo {
         bytes.push(self.lte_enable);
         bytes.push(self.gps_enable);
         bytes.push(self.track_enable);
+        bytes.push(self.bike_state);
+        bytes.push(self.bike_locked);
+        bytes.push(self.bike_cmd);
         bytes.extend(self.wifi_info.to_vec());
         bytes.extend(self.lte_info.to_vec());
         bytes
