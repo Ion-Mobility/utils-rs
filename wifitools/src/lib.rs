@@ -136,7 +136,7 @@ pub async fn scan_wifi(
     // Request a Wi-Fi scan
     if let Ok(_) = wireless_proxy.request_scan(scan_options).await {
         // Scan success wait for APs list updated
-        sleep(Duration::from_secs(1)).await;
+        sleep(Duration::from_secs(3)).await;
     } // else don't need to wait because rescan already did before
 
     // Poll for scan results
