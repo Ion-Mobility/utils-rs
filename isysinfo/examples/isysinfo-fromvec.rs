@@ -5,9 +5,9 @@ async fn main() {
     let mut _isysinfo = SysInfo::new();
     let invalid = [0u8; 10];
     let validbuf = [0u8; 75];
-    let result = _isysinfo.from_vec(&invalid);
+    let result = SysInfo::from_vec(&invalid);
     println!("Result: {:?}", result);
-    let result = _isysinfo.from_vec(&validbuf);
+    let result = SysInfo::from_vec(&validbuf);
     println!("Result: {:?}", result);
     loop {
 
