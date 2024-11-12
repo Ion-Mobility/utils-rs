@@ -267,7 +267,7 @@ impl IonModemCli {
         Ok(true)
     }
     
-    pub fn is_gps_lock(&mut self) -> Result<bool, IonModemCliError> {
+    pub fn is_gps_lock(&mut self) -> Result<Option<(f32, f32)>, IonModemCliError> {
         // Check if the modem path is set
         if self.modem.is_empty() {
             trace!("Modem is not ready, trying to query it");
@@ -345,7 +345,7 @@ impl IonModemCli {
                                         // Check if GPS lock conditions are met (e.g., valid coordinates)
                                         if let Some(longitude) = data.get("longitude") {
                                                 if let Some(latitude) = data.get("latitude") {
-                                                    return Ok(*longitude != 0.0 && *latitude != 0.0);
+                                                    return Ok(Some((*longitude,*latitude)));
                                                 }
                                         }
                                     }
@@ -359,7 +359,7 @@ impl IonModemCli {
                 }
             }
         }
-        Ok(false)
+        Ok(None)
     }
 
     pub fn is_ready(&self) -> bool {
