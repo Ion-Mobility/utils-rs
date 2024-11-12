@@ -199,7 +199,7 @@ impl SysInfo {
         // 11 + WifiInfo::size() + LteInfo::size()
         75
     }
-    pub fn from_vec(&self, bytes: &[u8]) -> Result<Self, String> {
+    pub fn from_vec(bytes: &[u8]) -> Result<Self, String> {
         let min_length = SysInfo::size();
 
         if bytes.len() < min_length {
