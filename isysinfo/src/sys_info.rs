@@ -2,6 +2,7 @@ use zvariant::Type;
 use zbus::zvariant::{SerializeDict, DeserializeDict};
 use byteorder::{ByteOrder, LittleEndian};
 use std::mem;
+use log::{debug, error};
 #[derive(Debug, Clone, SerializeDict, DeserializeDict, Type)]
 pub struct WifiInfo {
     pub ssid: String,
@@ -78,7 +79,7 @@ impl WifiInfo {
         bytes.extend(&self.ipv6);
         bytes.push(self.sec);
         bytes.push(self.internetable as u8); // Convert bool to byte
-        // println!("WIFI Info to_vec {} bytes", bytes.len());
+        debug!("WIFI Info to_vec {} bytes", bytes.len());
         bytes
     }
 }
@@ -91,6 +92,7 @@ pub struct LteInfo {
     pub internetable: bool,
     pub signal: f32,
     pub gpslocked: bool,
+    pub timezone: [u8; 20]
 }
 
 impl LteInfo {
@@ -102,6 +104,7 @@ impl LteInfo {
             internetable: false,
             signal: 0.0,
             gpslocked: false,
+            timezone: [0u8; 20]
         }
     }
     fn size() -> usize {
@@ -111,28 +114,32 @@ impl LteInfo {
         if bytes.is_empty() {
             return Err("Input bytes are empty".to_string());
         }
-
+    
         let ops_len = bytes[0] as usize;
-        let total_len = 1 + ops_len + 4 + 8 + 1 + 4 + 1; // Full size including all fields
-
+        let total_len = 1 + ops_len + 4 + 8 + 1 + 4 + 1 + 20; // Full size including the new `timezone` array
+        let input_len = bytes.len();
         if bytes.len() < total_len {
-            return Err("Invalid input byte length".to_string());
+            return Err(format!("LTE Invalid input byte length {}", input_len));
         }
-
+    
         let ops = String::from_utf8_lossy(&bytes[1..1 + ops_len]).to_string();
         let ipv4 = <[u8; 4]>::try_from(&bytes[1 + ops_len..5 + ops_len])
             .map_err(|_| "Failed to parse IPv4 address".to_string())?;
         let ipv6 = <[u8; 8]>::try_from(&bytes[5 + ops_len..13 + ops_len])
             .map_err(|_| "Failed to parse IPv6 address".to_string())?;
         let internetable = bytes[13 + ops_len] != 0;
-
+    
         // Read signal as f32 from the byte slice
         let signal_bytes = &bytes[14 + ops_len..18 + ops_len];
         let signal = f32::from_le_bytes(signal_bytes.try_into().map_err(|_| "Failed to parse signal".to_string())?);
         
         // Read gpslocked from the next byte
         let gpslocked = bytes[18 + ops_len] != 0;
-
+    
+        // Read the timezone array (20 bytes)
+        let timezone = <[u8; 20]>::try_from(&bytes[19 + ops_len..39 + ops_len])
+            .map_err(|_| "Failed to parse timezone".to_string())?;
+    
         Ok(LteInfo {
             ops,
             ipv4,
@@ -140,6 +147,7 @@ impl LteInfo {
             internetable,
             signal,
             gpslocked,
+            timezone,
         })
     }
 
@@ -152,7 +160,8 @@ impl LteInfo {
         bytes.push(self.internetable as u8); // Convert bool to byte
         bytes.extend(self.signal.to_le_bytes()); // Serialize signal as f32
         bytes.push(self.gpslocked as u8); // Convert gpslocked to byte
-        // println!("LTE Info to_vec {} bytes", bytes.len());
+        bytes.extend_from_slice(&self.timezone); // Serialize the timezone array
+        debug!("LTE Info to_vec {} bytes", bytes.len());
         bytes
     }
 }
@@ -187,13 +196,14 @@ impl SysInfo {
         }
     }
     pub fn size() -> usize {
-        55
+        // 11 + WifiInfo::size() + LteInfo::size()
+        75
     }
-    pub fn from_vec(bytes: &[u8]) -> Result<Self, String> {
+    pub fn from_vec(&self, bytes: &[u8]) -> Result<Self, String> {
         let min_length = SysInfo::size();
 
         if bytes.len() < min_length {
-            eprintln!("Input byte len to short {}/{}", bytes.len(), min_length);
+            error!("Input byte len to short {}/{}", bytes.len(), min_length);
             return Err("Input byte slice is too short".to_string());
         }
 
@@ -240,8 +250,7 @@ impl SysInfo {
         bytes.push(self.bike_cmd);
         bytes.extend(self.wifi_info.to_vec());
         bytes.extend(self.lte_info.to_vec());
-        // println!("iSYSINFO Info to_vec {} bytes, {}", bytes.len(), SysInfo::size());
-
+        debug!("iSYSINFO Info to_vec {} bytes, {}", bytes.len(), SysInfo::size());
         bytes
     }
 
