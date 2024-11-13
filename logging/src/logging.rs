@@ -38,7 +38,7 @@ impl MyLogging {
         // Console logger
         let stdout = ConsoleAppender::builder()
             .encoder(Box::new(PatternEncoder::new(
-                "[{d(%H:%M:%S%.3f)}][{f}:{L}][{l}] {m}{n}",
+                "[{f}:{L}][{l}] {m}{n}",
             )))
             .build();
 
