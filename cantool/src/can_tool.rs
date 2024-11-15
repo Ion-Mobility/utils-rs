@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use canparse::pgn::{ParseMessage, PgnLibrary};
 use tokio::time::Duration;
-use tokio_socketcan::{CANFilter, CANSocket, CANFrame, Error};
+use tokio_socketcan::{CANFilter, CANSocket};
 use futures_util::{stream::StreamExt, TryStreamExt};
 
 const CAN_RECV_TIMEOUT_S: u64 = 10;
@@ -25,7 +25,7 @@ impl CanUtils {
     pub async fn new(
         ifname: &str, 
         dbc_path: Option<&Path>, 
-        ids_filter: Vec<u32>
+        ids_filter: &Vec<u32>
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {  // Add Send + Sync
         let dbc_path = dbc_path.unwrap_or_else(|| Path::new(Self::DEFAULT_DBC_PATH));
 
@@ -47,18 +47,20 @@ impl CanUtils {
                         }
                     };
 
-                    let filters: Vec<CANFilter> = ids_filter
+                    let filters = if let Ok(_filters) = ids_filter
                         .into_iter()
-                        .map(|id| CANFilter::new(id, 0x1FFFFFFF)) // 0x1FFFFFFF for full mask
-                        .collect::<Result<Vec<CANFilter>, _>>()?;
-
-                    // Set filters if available
-                    if !filters.is_empty() {
-                        if let Err(e) = socket_can.set_filter(&filters) {
-                            error!("Failed to set CAN filters: {}", e);
-                            return Err(Box::new(e));
+                        .map(|id| CANFilter::new(*id, 0x1FFFFFFF)) // 0x1FFFFFFF for full mask
+                        .collect::<Result<Vec<CANFilter>, _>>() {
+                        // Set filters if available
+                        if !_filters.is_empty() {
+                            if let Err(e) = socket_can.set_filter(&_filters) {
+                                error!("Failed to set CAN _filters: {}", e);
+                            }
                         }
-                    }
+                        _filters
+                    } else {
+                        Vec::new()
+                    };
 
                     let id_and_signal = can_info
                         .hash_of_canid_signals()
