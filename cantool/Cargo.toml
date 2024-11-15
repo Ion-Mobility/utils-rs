@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-canparse = {git = "https://github.com/Ion-Mobility/canparse", branch = "0xkelvin/parse_signals"}
+can-dbc = {git = "https://github.com/TuEmb/can-dbc.git", branch = "dev"}
 socketcan = "2.0.0"
 chrono = "0.4"
 log = "0.4.20"

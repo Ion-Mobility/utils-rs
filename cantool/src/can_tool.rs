@@ -1,11 +1,11 @@
 extern crate chrono;
+use can_dbc::DBC;
+use futures_util::{stream::StreamExt, TryStreamExt};
 use log::{error, info, warn};
 use std::collections::HashMap;
 use std::path::Path;
-use canparse::pgn::{ParseMessage, PgnLibrary};
-use tokio::time::Duration;
+use tokio::{fs::File, io::AsyncReadExt, time::Duration};
 use tokio_socketcan::{CANFilter, CANSocket};
-use futures_util::{stream::StreamExt, TryStreamExt};
 
 const CAN_RECV_TIMEOUT_S: u64 = 10;
 
@@ -13,8 +13,7 @@ const CAN_RECV_TIMEOUT_S: u64 = 10;
 pub struct CanUtils {
     canport: String,
     filters: Vec<CANFilter>,
-    can_info: PgnLibrary,
-    id_and_signal: HashMap<u32, Vec<String>>,
+    dbc: DBC,
     can_socket: CANSocket,
 }
 
@@ -23,10 +22,11 @@ impl CanUtils {
 
     /// Creates a new CanUtils instance asynchronously
     pub async fn new(
-        ifname: &str, 
-        dbc_path: Option<&Path>, 
-        ids_filter: &Vec<u32>
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {  // Add Send + Sync
+        ifname: &str,
+        dbc_path: Option<&Path>,
+        ids_filter: Vec<u32>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        // Add Send + Sync
         let dbc_path = dbc_path.unwrap_or_else(|| Path::new(Self::DEFAULT_DBC_PATH));
 
         loop {
@@ -36,53 +36,61 @@ impl CanUtils {
                 continue;
             }
 
-            match PgnLibrary::from_dbc_file(dbc_path) {
-                Ok(can_info) => {
+            match Self::parse_dbc(dbc_path).await {
+                Ok(dbc) => {
                     let socket_can = match CANSocket::open(ifname) {
                         Ok(s) => s,
                         Err(e) => {
-                            error!("Failed to open CAN socket on {}: {}. Retrying...", ifname, e);
+                            error!(
+                                "Failed to open CAN socket on {}: {}. Retrying...",
+                                ifname, e
+                            );
                             tokio::time::sleep(Duration::from_secs(1)).await;
                             continue;
                         }
                     };
 
-                    let filters = if let Ok(_filters) = ids_filter
+                    let filters: Vec<CANFilter> = ids_filter
                         .into_iter()
-                        .map(|id| CANFilter::new(*id, 0x1FFFFFFF)) // 0x1FFFFFFF for full mask
-                        .collect::<Result<Vec<CANFilter>, _>>() {
-                        // Set filters if available
-                        if !_filters.is_empty() {
-                            if let Err(e) = socket_can.set_filter(&_filters) {
-                                error!("Failed to set CAN _filters: {}", e);
-                            }
-                        }
-                        _filters
-                    } else {
-                        Vec::new()
-                    };
+                        .map(|id| CANFilter::new(id, 0x1FFFFFFF)) // 0x1FFFFFFF for full mask
+                        .collect::<Result<Vec<CANFilter>, _>>()?;
 
-                    let id_and_signal = can_info
-                        .hash_of_canid_signals()
-                        .into_iter()
-                        .map(|(k, v)| (k, v.into_iter().map(String::from).collect()))
-                        .collect::<HashMap<u32, Vec<String>>>();
+                    // Set filters if available
+                    if !filters.is_empty() {
+                        if let Err(e) = socket_can.set_filter(&filters) {
+                            error!("Failed to set CAN filters: {}", e);
+                            return Err(Box::new(e));
+                        }
+                    }
 
                     return Ok(CanUtils {
                         canport: ifname.to_string(),
                         filters,
-                        can_info,
-                        id_and_signal,
+                        dbc,
                         can_socket: socket_can,
                     });
                 }
                 Err(e) => {
-                    error!("Failed to load DBC file {}: {}. Retrying...", dbc_path.display(), e);
+                    error!(
+                        "Failed to load DBC file {}: {}. Retrying...",
+                        dbc_path.display(),
+                        e
+                    );
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     continue;
                 }
             }
         }
+    }
+
+    async fn parse_dbc(dbc_path: &Path) -> Result<DBC, std::io::Error> {
+        let mut f = File::open(dbc_path).await?;
+        let mut buffer = Vec::new();
+        f.read_to_end(&mut buffer).await?;
+
+        let dbc = can_dbc::DBC::from_slice(&buffer).expect("Failed to parse dbc file");
+
+        Ok(dbc)
     }
 
     /// Restarts the CAN socket
@@ -92,7 +100,7 @@ impl CanUtils {
                 Ok(socket) => {
                     self.can_socket = socket;
                     info!("Successfully restarted CAN socket.");
-                    
+
                     // Reapply filters if necessary
                     if !self.filters.is_empty() {
                         if let Err(e) = self.can_socket.set_filter(&self.filters) {
@@ -103,7 +111,10 @@ impl CanUtils {
                     return Ok(());
                 }
                 Err(e) => {
-                    error!("Failed to restart CAN socket: {}. Retrying in 1 second...", e);
+                    error!(
+                        "Failed to restart CAN socket: {}. Retrying in 1 second...",
+                        e
+                    );
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             }
@@ -114,99 +125,80 @@ impl CanUtils {
     pub async fn get_signals(
         &mut self,
     ) -> Result<HashMap<String, f32>, Box<dyn std::error::Error + Send + Sync>> {
-        let mut result: HashMap<String, f32> = HashMap::new();
         loop {
             // Use the `timeout` function with the resolved duration
-            let frame_result = tokio::time::timeout(tokio::time::Duration::from_secs(CAN_RECV_TIMEOUT_S), self.can_socket.next()).await;
+            let frame_result = tokio::time::timeout(
+                tokio::time::Duration::from_secs(CAN_RECV_TIMEOUT_S),
+                self.can_socket.next(),
+            )
+            .await?;
 
             match frame_result {
-                Ok(Some(Ok(frame))) => {
+                Some(Ok(frame)) => {
                     let frame_id = frame.id() | 0x80000000;
-
-                    if let Some(signals) = self.id_and_signal.get(&frame_id) {
-                        for signal in signals {
-                            if let Some(signal_info) = self.can_info.get_spn(signal) {
-                                let mut can_padded_msg = [0u8; 8];
-                                can_padded_msg[..frame.data().len()].copy_from_slice(&frame.data());
-
-                                if let Some(value) = signal_info.parse_message(&can_padded_msg) {
-                                    result.insert(signal.clone(), value);
-                                } else {
-                                    error!("Failed to parse message for signal: {}", signal);
-                                    return Err("Failed to parse message, please check the DBC file.".into());
-                                }
-                            } else {
-                                error!("Signal not found in DBC: {}", signal);
-                                return Err("Signal not found in DBC.".into());
-                            }
+                    for message in self.dbc.messages() {
+                        if frame_id == (message.message_id().raw()) {
+                            let padding_data = self.pad_to_8_bytes(frame.data());
+                            let signal_data = message.parse_from_can(&padding_data);
+                            return Ok(signal_data);
                         }
-                    } else {
-                        error!("Message ID {:x} not found in DBC", frame.id());
-                        return Err("Message ID not found in DBC.".into());
                     }
-
-                    break; // Exit loop on successful frame reception
                 }
-                Ok(Some(Err(e))) => {
-                    error!("Failed to receive CAN frame: {}. Attempting socket restart...", e);
+                Some(Err(e)) => {
+                    error!(
+                        "Failed to receive CAN frame: {}. Attempting socket restart...",
+                        e
+                    );
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     self.restart_socket().await?; // Restart the socket and retry
                 }
-                Ok(None) => {
+                None => {
                     error!("No more frames available from the CAN socket.");
-                    return Err("No more frames available.".into());
-                }
-                Err(_) => {
-                    warn!("CAN Underun!!!");
                     return Err("No more frames available.".into());
                 }
             }
         }
-
-        Ok(result)
     }
 
     /// Asynchronously fetches signals from CAN frames with socket restart logic and timeout
     pub async fn try_get_signals(
         &mut self,
     ) -> Result<HashMap<String, f32>, Box<dyn std::error::Error + Send + Sync>> {
-        let mut result: HashMap<String, f32> = HashMap::new();
         // Use the `timeout` function with the resolved duration
         let frame_result = self.can_socket.try_next().await;
         match frame_result {
-            Ok(Some(_frame)) => {
-                let frame_id = _frame.id() | 0x80000000;
-                if let Some(signals) = self.id_and_signal.get(&frame_id) {
-                    for signal in signals {
-                        if let Some(signal_info) = self.can_info.get_spn(signal) {
-                            let mut can_padded_msg = [0u8; 8];
-                            can_padded_msg[.._frame.data().len()].copy_from_slice(&_frame.data());
-
-                            if let Some(value) = signal_info.parse_message(&can_padded_msg) {
-                                result.insert(signal.clone(), value);
-                            } else {
-                                error!("Failed to parse message for signal: {}", signal);
-                                return Err("Failed to parse message, please check the DBC file.".into());
-                            }
-                        } else {
-                            error!("Signal not found in DBC: {}", signal);
-                            return Err("Signal not found in DBC.".into());
-                        }
+            Ok(Some(frame)) => {
+                let frame_id = frame.id() | 0x80000000;
+                for message in self.dbc.messages() {
+                    if frame_id == (message.message_id().raw()) {
+                        let padding_data = self.pad_to_8_bytes(frame.data());
+                        let signal_data = message.parse_from_can(&padding_data);
+                        return Ok(signal_data);
                     }
-                    return Ok(result);
-                } else {
-                    error!("Message ID {:x} not found in DBC", _frame.id());
-                    return Err("Message ID not found in DBC.".into());
                 }
+                error!("Message ID {:x} not found in DBC", frame.id());
+                Err("Message ID not found in DBC.".into())
             }
-            Ok(None) => {
-                return Err("No more frames available.".into());
-            }
+            Ok(None) => Err("No more frames available.".into()),
             Err(_e) => {
                 error!("Failed to receive CAN frame: {}, sleep a bit", _e);
                 tokio::time::sleep(Duration::from_secs(1)).await;
-                return Err("Failed to receive CAN frame".into());
+                Err("Failed to receive CAN frame".into())
             }
         }
+    }
+
+    fn pad_to_8_bytes(&self, data: &[u8]) -> Vec<u8> {
+        // Convert the byte slice to a Vec<u8>
+        let mut padded_data = data.to_vec();
+
+        // Calculate the number of padding bytes needed
+        let padding_needed = 8usize.saturating_sub(padded_data.len());
+
+        // Extend the vector with zeros (or another byte) to make it 8 bytes long
+        padded_data.extend(std::iter::repeat(0).take(padding_needed));
+
+        // Return the padded vector
+        padded_data
     }
 }
