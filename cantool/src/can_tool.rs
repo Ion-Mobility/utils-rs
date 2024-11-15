@@ -24,7 +24,7 @@ impl CanUtils {
     pub async fn new(
         ifname: &str,
         dbc_path: Option<&Path>,
-        ids_filter: Vec<u32>,
+        ids_filter: &Vec<u32>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Add Send + Sync
         let dbc_path = dbc_path.unwrap_or_else(|| Path::new(Self::DEFAULT_DBC_PATH));
@@ -52,7 +52,7 @@ impl CanUtils {
 
                     let filters: Vec<CANFilter> = ids_filter
                         .into_iter()
-                        .map(|id| CANFilter::new(id, 0x1FFFFFFF)) // 0x1FFFFFFF for full mask
+                        .map(|id| CANFilter::new(*id, 0x1FFFFFFF)) // 0x1FFFFFFF for full mask
                         .collect::<Result<Vec<CANFilter>, _>>()?;
 
                     // Set filters if available
