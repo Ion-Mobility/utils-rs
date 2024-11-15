@@ -1,9 +1,7 @@
 use zvariant::Type;
-use zbus::zvariant::{SerializeDict, DeserializeDict};
-use byteorder::{ByteOrder, LittleEndian};
-use std::mem;
-use log::{debug, error};
-#[derive(Debug, Clone, SerializeDict, DeserializeDict, Type)]
+use serde::{Deserialize as SerdeDeserialize, Serialize as SerdeSerialize};
+
+#[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
 pub struct WifiInfo {
     pub ssid: String,
     pub mac: [u8; 6],
@@ -26,65 +24,9 @@ impl WifiInfo {
             internetable: false,
         }
     }
-    
-    pub fn size() -> usize {
-        mem::size_of::<WifiInfo>()
-    }
-
-    pub fn from_vec(bytes: &[u8]) -> Result<Self, String> {
-        if bytes.is_empty() {
-            return Err("Input bytes are empty".to_string());
-        }
-
-        let ssid_len = bytes[0] as usize;
-        let total_len = 1 + ssid_len + 6 + 4 + 8 + 1 + 1; // Calculate total required size
-
-        if bytes.len() < total_len {
-            return Err("Invalid input byte length".to_string());
-        }
-
-        let ssid = String::from_utf8_lossy(&bytes[1..1 + ssid_len]).to_string();
-        let mac = <[u8; 6]>::try_from(&bytes[1 + ssid_len..7 + ssid_len])
-            .map_err(|_| "Failed to parse MAC address".to_string())?;
-
-        // Read signal as f32 from the byte slice
-        let signal_bytes = &bytes[7 + ssid_len..11 + ssid_len];
-        let signal = f32::from_le_bytes(signal_bytes.try_into().map_err(|_| "Failed to parse signal".to_string())?);
-
-        let ipv4 = <[u8; 4]>::try_from(&bytes[11 + ssid_len..15 + ssid_len])
-            .map_err(|_| "Failed to parse IPv4 address".to_string())?;
-        let ipv6 = <[u8; 8]>::try_from(&bytes[15 + ssid_len..23 + ssid_len])
-            .map_err(|_| "Failed to parse IPv6 address".to_string())?;
-        let sec = bytes[23 + ssid_len];
-        let internetable = bytes[24 + ssid_len] != 0;
-
-        Ok(WifiInfo {
-            ssid,
-            mac,
-            signal,
-            ipv4,
-            ipv6,
-            sec,
-            internetable,
-        })
-    }
-
-    pub fn to_vec(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.push(self.ssid.len() as u8); // Length of SSID
-        bytes.extend(self.ssid.as_bytes());
-        bytes.extend(&self.mac);
-        bytes.extend(self.signal.to_le_bytes()); // Serialize signal as f32
-        bytes.extend(&self.ipv4);
-        bytes.extend(&self.ipv6);
-        bytes.push(self.sec);
-        bytes.push(self.internetable as u8); // Convert bool to byte
-        debug!("WIFI Info to_vec {} bytes", bytes.len());
-        bytes
-    }
 }
 
-#[derive(Debug, Clone, SerializeDict, DeserializeDict, Type)]
+#[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
 pub struct LteInfo {
     pub ops: String,
     pub ipv4: [u8; 4],
@@ -107,66 +49,9 @@ impl LteInfo {
             timezone: [0u8; 20]
         }
     }
-    fn size() -> usize {
-        mem::size_of::<LteInfo>()
-    }
-    pub fn from_vec(bytes: &[u8]) -> Result<Self, String> {
-        if bytes.is_empty() {
-            return Err("Input bytes are empty".to_string());
-        }
-    
-        let ops_len = bytes[0] as usize;
-        let total_len = 1 + ops_len + 4 + 8 + 1 + 4 + 1 + 20; // Full size including the new `timezone` array
-        let input_len = bytes.len();
-        if bytes.len() < total_len {
-            return Err(format!("LTE Invalid input byte length {}", input_len));
-        }
-    
-        let ops = String::from_utf8_lossy(&bytes[1..1 + ops_len]).to_string();
-        let ipv4 = <[u8; 4]>::try_from(&bytes[1 + ops_len..5 + ops_len])
-            .map_err(|_| "Failed to parse IPv4 address".to_string())?;
-        let ipv6 = <[u8; 8]>::try_from(&bytes[5 + ops_len..13 + ops_len])
-            .map_err(|_| "Failed to parse IPv6 address".to_string())?;
-        let internetable = bytes[13 + ops_len] != 0;
-    
-        // Read signal as f32 from the byte slice
-        let signal_bytes = &bytes[14 + ops_len..18 + ops_len];
-        let signal = f32::from_le_bytes(signal_bytes.try_into().map_err(|_| "Failed to parse signal".to_string())?);
-        
-        // Read gpslocked from the next byte
-        let gpslocked = bytes[18 + ops_len] != 0;
-    
-        // Read the timezone array (20 bytes)
-        let timezone = <[u8; 20]>::try_from(&bytes[19 + ops_len..39 + ops_len])
-            .map_err(|_| "Failed to parse timezone".to_string())?;
-    
-        Ok(LteInfo {
-            ops,
-            ipv4,
-            ipv6,
-            internetable,
-            signal,
-            gpslocked,
-            timezone,
-        })
-    }
-
-    pub fn to_vec(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.push(self.ops.len() as u8); // Length of operator string
-        bytes.extend(self.ops.as_bytes());
-        bytes.extend(&self.ipv4);
-        bytes.extend(&self.ipv6);
-        bytes.push(self.internetable as u8); // Convert bool to byte
-        bytes.extend(self.signal.to_le_bytes()); // Serialize signal as f32
-        bytes.push(self.gpslocked as u8); // Convert gpslocked to byte
-        bytes.extend_from_slice(&self.timezone); // Serialize the timezone array
-        debug!("LTE Info to_vec {} bytes", bytes.len());
-        bytes
-    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
 pub struct SysInfo {
     pub req: u32,
     pub wifi_enable: u8,
@@ -176,6 +61,7 @@ pub struct SysInfo {
     pub bike_state: u8,
     pub bike_locked: u8,
     pub bike_cmd: u8,
+    pub reversed: [u32; 8],
     pub wifi_info: WifiInfo,
     pub lte_info: LteInfo,
 }
@@ -191,67 +77,10 @@ impl SysInfo {
             bike_state: 0,
             bike_locked: 1,
             bike_cmd: 0,
+            reversed: [0u32; 8],
             wifi_info: WifiInfo::new(),
             lte_info: LteInfo::new(),
         }
-    }
-    pub fn size() -> usize {
-        // 11 + WifiInfo::size() + LteInfo::size()
-        75
-    }
-    pub fn from_vec(bytes: &[u8]) -> Result<Self, String> {
-        let min_length = SysInfo::size();
-
-        if bytes.len() < min_length {
-            error!("Input byte len to short {}/{}", bytes.len(), min_length);
-            return Err("Input byte slice is too short".to_string());
-        }
-
-        let req = LittleEndian::read_u32(&bytes[0..4]);
-        let wifi_enable = bytes[4];
-        let lte_enable = bytes[5];
-        let gps_enable = bytes[6];
-        let track_enable = bytes[7];
-        let bike_state = bytes[8];
-        let bike_locked = bytes[9];
-        let bike_cmd = bytes[10];
-
-        let wifi_info_start = 11;
-        let wifi_info = WifiInfo::from_vec(&bytes[wifi_info_start..])
-            .map_err(|e| format!("Failed to parse WifiInfo: {}", e))?;
-
-        let lte_info_start = wifi_info_start + wifi_info.to_vec().len();
-        let lte_info = LteInfo::from_vec(&bytes[lte_info_start..])
-            .map_err(|e| format!("Failed to parse LteInfo: {}", e))?;
-
-        Ok(SysInfo {
-            req,
-            wifi_enable,
-            lte_enable,
-            gps_enable,
-            track_enable,
-            bike_state,
-            bike_locked,
-            bike_cmd,
-            wifi_info,
-            lte_info,
-        })
-    }
-
-    pub fn to_vec(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend(&self.req.to_le_bytes());
-        bytes.push(self.wifi_enable);
-        bytes.push(self.lte_enable);
-        bytes.push(self.gps_enable);
-        bytes.push(self.track_enable);
-        bytes.push(self.bike_state);
-        bytes.push(self.bike_locked);
-        bytes.push(self.bike_cmd);
-        bytes.extend(self.wifi_info.to_vec());
-        bytes.extend(self.lte_info.to_vec());
-        debug!("iSYSINFO Info to_vec {} bytes, {}", bytes.len(), SysInfo::size());
-        bytes
     }
 
     pub fn get_wifi_cfg(&self) -> u8 {

@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-byteorder = "1.5.0"
-log = "0.4.22"
+serde = { version = "1.0.215", features = ["derive"] }
 tokio = { version = "1.41.0", features = ["full"] }
 zbus = "4.4.0"
 zvariant = "4.2.0"
