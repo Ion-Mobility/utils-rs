@@ -6,7 +6,7 @@ use dbus::blocking::stdintf::org_freedesktop_dbus::ObjectManager;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use log::{trace, warn, info, error};
-use std::convert::TryInto;
+use nmea_parser::{ParsedMessage, NmeaParser};
 
 #[derive(Debug)]
 pub enum IonModemCliError {
@@ -268,85 +268,68 @@ impl IonModemCli {
     }
     
     pub fn is_gps_lock(&mut self) -> Result<Option<(f32, f32)>, IonModemCliError> {
-        // Check if the modem path is set
-        if self.modem.is_empty() {
-            trace!("Modem is not ready, trying to query it");
-            if self.modem_preparing().is_err() {
-                return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
-            } else {
-                info!("Modem is ready");
-            }
-        }
-    
         if self.is_location_enabled() {
             // Connect to the system bus
-            let connection = Connection::new_system().expect("D-Bus connection failed");
-    
+            let c = Connection::new_system().expect("D-Bus connection failed");
+
             // Specify the interface and method to call for getting location
             let interface = "org.freedesktop.ModemManager1.Modem.Location";
-            let gps_method = "GetLocation";
-    
-            // Prepare the D-Bus message
-            let msg = Message::new_method_call(&self.destination, &self.modem, interface, gps_method)
-                .expect("Failed to create method call");
-    
-            // Send the message and await the response
-            match connection.send_with_reply_and_block(msg, Duration::from_secs(2)) {
-                Ok(result) => {
-                    // Parse the response to get the items
-                    let responds: Vec<MessageItem> = result.get_items();
-                    let mut data: HashMap<String, f32> = HashMap::new();
+            let gpsmethod = "GetLocation";
 
+            // Prepare the D-Bus message
+            let msg = Message::new_method_call(&self.destination, &self.modem, interface, gpsmethod)
+                .expect("Failed to create method call");
+
+            // Send the message and await the response
+            let reply = c.send_with_reply_and_block(msg, Duration::from_secs(2));
+            let mut gps_fixed = 0u8;
+            let mut lng_deg: f32 = 0.0;
+            let mut lat_deg: f32 = 0.0;
+            match reply {
+                Ok(result) => {
+                    // Parse the response to get the Args
+                    let responds: Vec<MessageItem> = result.get_items();
                     for respond in responds.iter() {
                         if let MessageItem::Dict(dict) = respond {
-                            let items = dict.to_vec();
-                            for (key, value) in items {
-                                if let MessageItem::UInt32(id) = key {
-                                    if id == 2 {
-                                        // Create a HashMap to store the parsed values
-                                        if let MessageItem::Variant(inner_dict) = value {
-                                            if let MessageItem::Dict(_dict) = *inner_dict {
-                                                for (key, value) in _dict.to_vec() {
-                                                    match key {
-                                                        MessageItem::Str(_signature) => {
-                                                            match _signature.as_str() {
-                                                                "longitude" => {
-                                                                    if let MessageItem::Variant(item_value) = value {
-                                                                        // println!("Sig {} {}", _signature, _longitude);
-                                                                        if let MessageItem::Double(_longitude) = *item_value {
-                                                                            data.insert("longitude".to_string(), _longitude as f32);
-                                                                        }
-                                                                    }
-                                                                },
-                                                                "latitude" => {
-                                                                    if let MessageItem::Variant(item_value) = value {
-                                                                        // println!("Sig {} {}", _signature, _longitude);
-                                                                        if let MessageItem::Double(_latitude) = *item_value {
-                                                                            data.insert("latitude".to_string(), _latitude as f32);
-                                                                        }
-                                                                    }
-                                                                },
-                                                                "altitude" => {
-                                                                    if let MessageItem::Variant(item_value) = value {
-                                                                        // println!("Sig {} {}", _signature, _longitude);
-                                                                        if let MessageItem::Double(_altitude) = *item_value {
-                                                                            data.insert("altitude".to_string(), _altitude as f32);
-                                                                        }
-                                                                    }
-                                                                },
-                                                                _ => {}
-                                                            }
-                                                        },
-                                                        _ => {}
+                            let a = dict.to_vec();
+                            for (x, y) in a {
+                                if let MessageItem::UInt32(id) = x {
+                                    if id == 4 {
+                                        if let MessageItem::Variant(var) = y {
+                                            if let MessageItem::Str(nmea) = *var {
+                                                let mut nmea_parser = NmeaParser::new();
+                                                for sentence in nmea.split("\r\n") {
+                                                    if sentence.is_empty() {
+                                                        continue;
+                                                    }
+                                                    trace!("GPS DATA: {}", sentence);
+                                                    match nmea_parser.parse_sentence(sentence) {
+                                                        Ok(ParsedMessage::Gsa(gsa)) => {
+                                                            trace!("GPS FixMode: {:?}", gsa.mode2_3d);
+                                                            gps_fixed = {
+                                                                if let Some(mode2_3d) = gsa.mode2_3d {
+                                                                    mode2_3d as u8
+                                                                } else {
+                                                                    info!("Gps not fixed");
+                                                                    0u8
+                                                                }
+                                                            };
+                                                            trace!("Received GSA: {:?}", gsa);
+                                                        }
+                                                        Ok(ParsedMessage::Gga(gga)) => {
+                                                            lat_deg = gga.latitude.unwrap_or_default() as f32;
+                                                            lng_deg = gga.longitude.unwrap_or_default() as f32;
+                                                            trace!("Received GGA: {:?}", gga);
+                                                        }
+                                                        Err(e) => {
+                                                            error!("Error parsing GPS data: {:?}, {:?}", sentence, e);
+                                                        }
+                                                        _ => {
+                                                            // don't care
+                                                        }
                                                     }
                                                 }
                                             }
-                                        }
-                                        // Check if GPS lock conditions are met (e.g., valid coordinates)
-                                        if let Some(longitude) = data.get("longitude") {
-                                                if let Some(latitude) = data.get("latitude") {
-                                                    return Ok(Some((*longitude,*latitude)));
-                                                }
                                         }
                                     }
                                 }
@@ -358,9 +341,107 @@ impl IonModemCli {
                     trace!("Failed to get location: {:?}", e);
                 }
             }
+            if gps_fixed > 0 {
+                return Ok(Some((lng_deg, lat_deg)));
+            }
         }
         Ok(None)
     }
+
+    // pub fn is_gps_lock(&mut self) -> Result<Option<(f32, f32)>, IonModemCliError> {
+    //     // Check if the modem path is set
+    //     if self.modem.is_empty() {
+    //         trace!("Modem is not ready, trying to query it");
+    //         if self.modem_preparing().is_err() {
+    //             return Err(IonModemCliError::ModemError("Modem is not specified".to_owned()));
+    //         } else {
+    //             info!("Modem is ready");
+    //         }
+    //     }
+    
+    //     if self.is_location_enabled() {
+    //         // Connect to the system bus
+    //         let connection = Connection::new_system().expect("D-Bus connection failed");
+    
+    //         // Specify the interface and method to call for getting location
+    //         let interface = "org.freedesktop.ModemManager1.Modem.Location";
+    //         let gps_method = "GetLocation";
+    
+    //         // Prepare the D-Bus message
+    //         let msg = Message::new_method_call(&self.destination, &self.modem, interface, gps_method)
+    //             .expect("Failed to create method call");
+    
+    //         // Send the message and await the response
+    //         match connection.send_with_reply_and_block(msg, Duration::from_secs(2)) {
+    //             Ok(result) => {
+    //                 // Parse the response to get the items
+    //                 let responds: Vec<MessageItem> = result.get_items();
+    //                 let mut data: HashMap<String, f32> = HashMap::new();
+
+    //                 for respond in responds.iter() {
+    //                     if let MessageItem::Dict(dict) = respond {
+    //                         let items = dict.to_vec();
+    //                         for (key, value) in items {
+    //                             if let MessageItem::UInt32(id) = key {
+    //                                 if id == 2 {
+    //                                     // Create a HashMap to store the parsed values
+    //                                     if let MessageItem::Variant(inner_dict) = value {
+    //                                         if let MessageItem::Dict(_dict) = *inner_dict {
+    //                                             for (key, value) in _dict.to_vec() {
+    //                                                 match key {
+    //                                                     MessageItem::Str(_signature) => {
+    //                                                         match _signature.as_str() {
+    //                                                             "longitude" => {
+    //                                                                 if let MessageItem::Variant(item_value) = value {
+    //                                                                     // println!("Sig {} {}", _signature, _longitude);
+    //                                                                     if let MessageItem::Double(_longitude) = *item_value {
+    //                                                                         data.insert("longitude".to_string(), _longitude as f32);
+    //                                                                     }
+    //                                                                 }
+    //                                                             },
+    //                                                             "latitude" => {
+    //                                                                 if let MessageItem::Variant(item_value) = value {
+    //                                                                     // println!("Sig {} {}", _signature, _longitude);
+    //                                                                     if let MessageItem::Double(_latitude) = *item_value {
+    //                                                                         data.insert("latitude".to_string(), _latitude as f32);
+    //                                                                     }
+    //                                                                 }
+    //                                                             },
+    //                                                             "altitude" => {
+    //                                                                 if let MessageItem::Variant(item_value) = value {
+    //                                                                     // println!("Sig {} {}", _signature, _longitude);
+    //                                                                     if let MessageItem::Double(_altitude) = *item_value {
+    //                                                                         data.insert("altitude".to_string(), _altitude as f32);
+    //                                                                     }
+    //                                                                 }
+    //                                                             },
+    //                                                             _ => {}
+    //                                                         }
+    //                                                     },
+    //                                                     _ => {}
+    //                                                 }
+    //                                             }
+    //                                         }
+    //                                     }
+    //                                     // Check if GPS lock conditions are met (e.g., valid coordinates)
+    //                                     if let Some(longitude) = data.get("longitude") {
+    //                                             if let Some(latitude) = data.get("latitude") {
+    //                                                 return Ok(Some((*longitude,*latitude)));
+    //                                             }
+    //                                     }
+    //                                 }
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //             Err(e) => {
+    //                 trace!("Failed to get location: {:?}", e);
+    //             }
+    //         }
+    //     }
+    //     Ok(None)
+    // }
 
     pub fn is_ready(&self) -> bool {
         self.ready
