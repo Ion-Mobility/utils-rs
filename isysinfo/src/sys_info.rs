@@ -61,7 +61,8 @@ pub struct SysInfo {
     pub bike_state: u8,
     pub bike_locked: u8,
     pub bike_cmd: u8,
-    pub reversed: [u32; 8],
+    pub front_tire: f32,
+    pub rear_tire: f32,
     pub wifi_info: WifiInfo,
     pub lte_info: LteInfo,
 }
@@ -77,7 +78,8 @@ impl SysInfo {
             bike_state: 0,
             bike_locked: 1,
             bike_cmd: 0,
-            reversed: [0u32; 8],
+            front_tire: 0.0,
+            rear_tire: 0.0,
             wifi_info: WifiInfo::new(),
             lte_info: LteInfo::new(),
         }
@@ -105,6 +107,20 @@ impl SysInfo {
 
     pub fn set_gps_cfg(&mut self, val: f32) {
         self.gps_enable = if val != 0.0 { 1 } else { 0 };
+    }
+
+    pub fn get_fronttire_info(&self) -> f32 {
+        self.front_tire.clone()
+    }
+    pub fn set_fronttire_info(&mut self, new_value: f32) {
+        self.front_tire = new_value;
+    }
+
+    pub fn get_reartire_info(&self) -> f32 {
+        self.rear_tire.clone()
+    }
+    pub fn set_reartire_info(&mut self, new_value: f32) {
+        self.rear_tire = new_value;
     }
 
     pub fn update_lte_info(&mut self, new_info: LteInfo) {
