@@ -101,3 +101,21 @@ pub async fn get_isys_info() -> Result<SysInfo> {
     }
     Ok(_result)
 }
+
+pub async fn set_isys_info(_isysinfo: SysInfo) -> Result<bool> {
+    // Create a connection to the system bus
+    let mut _result: bool = false;
+    if let Ok(connection) = Connection::system().await {
+        if let Ok(proxy) = Proxy::new(
+            &connection,
+            "org.ion.IComGateway",  // D-Bus destination (service name)
+            "/org/ion/IComGateway", // Object path
+            "org.ion.IComGateway",  // Introspection interface
+        )
+        .await {
+            // Call the D-Bus method to get system info (returns Vec<u8>)
+            _result = proxy.call("SetSystemInfo", &(_isysinfo)).await?;
+        } 
+    }
+    Ok(_result)
+}
