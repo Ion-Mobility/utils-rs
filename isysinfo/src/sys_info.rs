@@ -2,6 +2,61 @@ use zvariant::Type;
 use serde::{Deserialize as SerdeDeserialize, Serialize as SerdeSerialize};
 
 #[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
+pub struct LocationData {
+    pub lat_deg: f64,
+    pub lng_deg: f64,
+    pub altitude: f64,
+}
+
+#[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
+pub struct MovementData {
+    pub speed: f64,
+    pub heading_deg: f32,
+    pub bearing: f64,
+}
+
+#[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
+pub struct AccuracyData {
+    pub accuracy: f64,
+    pub epx_m: f64,
+    pub epy_m: f64,
+}
+
+#[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
+// Original struct is now split
+pub struct GpsInfo {
+    pub time: i64,
+    pub fixmode: u8,
+    pub location: LocationData,
+    pub movement: MovementData,
+    pub accuracy: AccuracyData,
+}
+
+impl GpsInfo {
+    pub fn new() -> Self {
+        GpsInfo {
+            time: 0,
+            fixmode: 0,
+            location: LocationData {
+                lat_deg: 0.0,
+                lng_deg: 0.0,
+                altitude: 0.0
+            },
+            movement: MovementData {
+                speed: 0.0,
+                heading_deg: 0.0,
+                bearing: 0.0
+            },
+            accuracy: AccuracyData {
+                accuracy: 0.0,
+                epx_m: 0.0,
+                epy_m: 0.0
+            }
+        }
+    }
+}
+
+#[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
 pub struct WifiInfo {
     pub ssid: String,
     pub mac: [u8; 6],
@@ -70,6 +125,7 @@ pub struct SysInfo {
     pub rear_tire: f32,
     pub wifi_info: WifiInfo,
     pub lte_info: LteInfo,
+    pub gps_info: GpsInfo
 }
 
 impl SysInfo {
@@ -92,6 +148,7 @@ impl SysInfo {
             rear_tire: 0.0,
             wifi_info: WifiInfo::new(),
             lte_info: LteInfo::new(),
+            gps_info: GpsInfo::new()
         }
     }
 
@@ -157,4 +214,7 @@ impl SysInfo {
         self.lte_info.internetable
     }
     
+    pub fn get_gps_info(&self) -> GpsInfo {
+        self.gps_info.clone()
+    }
 }
