@@ -7,7 +7,6 @@ repository = "git@github.com:ION-Mobility-Team/utils-rs.git"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-canparse = {git = "ssh://git@github.com/ION-Mobility-Team/canparse.git", branch = "0xkelvin/parse_signals"}
 socketcan = "2.0.0"
 log = "0.4.20"
 mmcli = { path = "mmcli" }
