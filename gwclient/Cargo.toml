@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-isysinfo = { git = "ssh://git@github.com/ION-Mobility-Team/utils-rs.git", branch = "develop", version = "0.1.0" }
+isysinfo = { git = "https://github.com/ION-Mobility-Team/utils-rs.git", branch = "refactor-0.79.6", version = "0.1.0" }
 rusty_network_manager = "0.5.2"
 tokio = { version = "1.40.0", features = ["full"] }
 zbus = "4.4.0"
