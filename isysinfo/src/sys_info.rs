@@ -107,6 +107,37 @@ impl LteInfo {
 }
 
 #[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
+pub struct BikeNotice {
+    pub cooling: u8,
+    pub falling: u8,
+    pub tyre_low: u8,
+    pub bms_low: u8,
+    pub charge_int: u8,
+    pub charge_comp: u8,
+    pub keyf_low: u8,
+    pub thref_det: u8,
+    pub tamp_det: u8,
+    pub reversed: u8
+}
+
+impl BikeNotice {
+    pub fn new() -> Self {
+        BikeNotice {
+            cooling: 0u8,
+            falling: 0u8,
+            tyre_low: 0u8,
+            bms_low: 0u8,
+            charge_int: 0u8,
+            charge_comp: 0u8,
+            keyf_low: 0u8,
+            thref_det: 0u8,
+            tamp_det: 0u8,
+            reversed: 0u8
+        }
+    }
+}
+
+#[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
 pub struct SysInfo {
     pub req: u32,
     pub wifi_enable: u8,
@@ -115,7 +146,7 @@ pub struct SysInfo {
     pub track_enable: u8,
     pub bike_state: u8,
     pub bike_locked: u8,
-    pub bike_cmd: u8,
+    pub bike_noti: BikeNotice,
     pub ridemode: u8,
     pub range_km: u32,
     pub soc_pct: u8,
@@ -138,7 +169,7 @@ impl SysInfo {
             track_enable: 1,
             bike_state: 0,
             bike_locked: 1,
-            bike_cmd: 0,
+            bike_cmd: BikeNotice::new(),
             ridemode: 0,
             range_km: 0,
             soc_pct: 0,
