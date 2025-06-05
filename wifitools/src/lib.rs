@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use tokio::time::{sleep, Duration, Instant};
 use zbus::zvariant::Value;
 use zbus::{Connection, Proxy};
-use zvariant::{ObjectPath, OwnedValue, Str};
+use zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Str};
 use std::net::Ipv4Addr;
 use tokio::sync::Mutex;
 use std::sync::Arc;
