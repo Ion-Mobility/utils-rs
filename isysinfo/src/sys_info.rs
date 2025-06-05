@@ -169,7 +169,7 @@ impl SysInfo {
             track_enable: 1,
             bike_state: 0,
             bike_locked: 1,
-            bike_cmd: BikeNotice::new(),
+            bike_noti: BikeNotice::new(),
             ridemode: 0,
             range_km: 0,
             soc_pct: 0,
