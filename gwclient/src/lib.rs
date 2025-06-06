@@ -190,12 +190,12 @@ pub async fn get_notice_info() -> BikeNotice {
             "org.ion.IComGateway",
         ).await.ok()?;
 
-        let gps_info: BikeNotice = proxy.call("GetBikeNotice", &()).await.ok()?;
-        Some(gps_info)
+        let notice_info: BikeNotice = proxy.call("GetNoticeInfo", &()).await.ok()?;
+        Some(notice_info)
     };
 
     match timeout(timeout_duration, operation).await {
-        Ok(Some(gps_info)) => gps_info,
+        Ok(Some(notice_info)) => notice_info,
         _ => BikeNotice::new(), // default fallback on any failure
     }
 }
