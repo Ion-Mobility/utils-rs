@@ -1,9 +1,10 @@
-use gwclient::{get_isys_info};
+use gwclient::{get_gps_info};
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     loop {
-        let isysinfo = get_isys_info().await;
-        println!("Result: {:?}", isysinfo);
+        let gps_info = get_gps_info().await;
+        println!("gpsInfo: {:?}", gps_info);
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 }
