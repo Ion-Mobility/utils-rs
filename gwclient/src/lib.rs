@@ -1,6 +1,12 @@
 use zbus::{Connection, Proxy};
 use zbus::fdo::Result;
-use isysinfo::sys_info::SysInfo;
+// use isysinfo::sys_info::SysInfo;
+use isysinfo::sys_info::{LteInfo, SysInfo, WifiInfo, BikeNotice, GpsInfo};
+use tokio::time::timeout;
+use std::time::Duration;
+// use zbus::{Error, fdo};
+// use zbus::names::OwnedErrorName;
+// use std::convert::TryInto; // Required for `.try_into()`
 
 pub async fn get_ota_pub_message() -> Result<Vec<u8>> {
     // Create a connection to the system bus
@@ -100,4 +106,96 @@ pub async fn get_isys_info() -> Result<SysInfo> {
         } 
     }
     Ok(_result)
+}
+
+pub async fn get_wifi_info() -> WifiInfo {
+    let timeout_duration = Duration::from_millis(5000);
+
+    let operation = async {
+        let connection = Connection::system().await.ok()?;
+        let proxy = Proxy::new(
+            &connection,
+            "org.ion.IComGateway",
+            "/org/ion/IComGateway",
+            "org.ion.IComGateway",
+        ).await.ok()?;
+
+        let gps_info: WifiInfo = proxy.call("GetWifiInfo", &()).await.ok()?;
+
+        Some(gps_info)
+    };
+
+    match timeout(timeout_duration, operation).await {
+        Ok(Some(gps_info)) => gps_info,
+        _ => WifiInfo::new(), // default fallback on any failure
+    }
+}
+
+pub async fn get_lte_info() -> LteInfo {
+    let timeout_duration = Duration::from_millis(5000);
+
+    let operation = async {
+        let connection = Connection::system().await.ok()?;
+        let proxy = Proxy::new(
+            &connection,
+            "org.ion.IComGateway",
+            "/org/ion/IComGateway",
+            "org.ion.IComGateway",
+        ).await.ok()?;
+
+        let gps_info: LteInfo = proxy.call("GetLteInfo", &()).await.ok()?;
+
+        Some(gps_info)
+    };
+
+    match timeout(timeout_duration, operation).await {
+        Ok(Some(gps_info)) => gps_info,
+        _ => LteInfo::new(), // default fallback on any failure
+    }
+}
+
+
+pub async fn get_gps_info() -> GpsInfo {
+    let timeout_duration = Duration::from_millis(5000);
+
+    let operation = async {
+        let connection = Connection::system().await.ok()?;
+        let proxy = Proxy::new(
+            &connection,
+            "org.ion.IComGateway",
+            "/org/ion/IComGateway",
+            "org.ion.IComGateway",
+        ).await.ok()?;
+
+        let gps_info: GpsInfo = proxy.call("GetGpsInfo", &()).await.ok()?;
+
+        Some(gps_info)
+    };
+
+    match timeout(timeout_duration, operation).await {
+        Ok(Some(gps_info)) => gps_info,
+        _ => GpsInfo::new(), // default fallback on any failure
+    }
+}
+
+pub async fn get_notice_info() -> BikeNotice {
+    let timeout_duration = Duration::from_millis(5000);
+
+    let operation = async {
+        let connection = Connection::system().await.ok()?;
+        let proxy = Proxy::new(
+            &connection,
+            "org.ion.IComGateway",
+            "/org/ion/IComGateway",
+            "org.ion.IComGateway",
+        ).await.ok()?;
+
+        let gps_info: BikeNotice = proxy.call("GetBikeNotice", &()).await.ok()?;
+        Some(gps_info)
+    };
+
+    match timeout(timeout_duration, operation).await {
+        Ok(Some(gps_info)) => gps_info,
+        _ => BikeNotice::new(), // default fallback on any failure
+    }
 }

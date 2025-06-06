@@ -58,7 +58,7 @@ impl GpsInfo {
 
 #[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
 pub struct WifiInfo {
-    pub ssid: String,
+    pub ssid: Vec<u8>,
     pub mac: [u8; 6],
     pub signal: f32,
     pub ipv4: [u8; 4],
@@ -70,7 +70,7 @@ pub struct WifiInfo {
 impl WifiInfo {
     pub fn new() -> Self {
         WifiInfo {
-            ssid: String::new(),
+            ssid: Vec::new(),
             mac: [0u8; 6],
             signal: 0.0,
             ipv4: [0u8; 4],
@@ -83,9 +83,8 @@ impl WifiInfo {
 
 #[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
 pub struct LteInfo {
-    pub ops: String,
+    pub ops: Vec<u8>,
     pub ipv4: [u8; 4],
-    pub ipv6: [u8; 8],
     pub internetable: bool,
     pub signal: f32,
     pub gpslocked: bool,
@@ -95,9 +94,8 @@ pub struct LteInfo {
 impl LteInfo {
     pub fn new() -> Self {
         LteInfo {
-            ops: String::new(),
+            ops: Vec::new(),
             ipv4: [0u8; 4],
-            ipv6: [0u8; 8],
             internetable: false,
             signal: 0.0,
             gpslocked: false,
@@ -146,7 +144,6 @@ pub struct SysInfo {
     pub track_enable: u8,
     pub bike_state: u8,
     pub bike_locked: u8,
-    pub bike_noti: BikeNotice,
     pub ridemode: u8,
     pub range_km: u32,
     pub soc_pct: u8,
@@ -154,9 +151,6 @@ pub struct SysInfo {
     pub odo_m: u32,
     pub front_tire: f32,
     pub rear_tire: f32,
-    pub wifi_info: WifiInfo,
-    pub lte_info: LteInfo,
-    pub gps_info: GpsInfo
 }
 
 impl SysInfo {
@@ -169,7 +163,6 @@ impl SysInfo {
             track_enable: 1,
             bike_state: 0,
             bike_locked: 1,
-            bike_noti: BikeNotice::new(),
             ridemode: 0,
             range_km: 0,
             soc_pct: 0,
@@ -177,75 +170,6 @@ impl SysInfo {
             odo_m: 0,
             front_tire: 0.0,
             rear_tire: 0.0,
-            wifi_info: WifiInfo::new(),
-            lte_info: LteInfo::new(),
-            gps_info: GpsInfo::new()
         }
-    }
-
-    pub fn get_wifi_cfg(&self) -> u8 {
-        self.wifi_enable
-    }
-
-    pub fn get_lte_cfg(&self) -> u8 {
-        self.lte_enable
-    }
-
-    pub fn get_gps_cfg(&self) -> u8 {
-        self.gps_enable
-    }
-
-    pub fn set_wifi_cfg(&mut self, val: f32) {
-        self.wifi_enable = if val != 0.0 { 1 } else { 0 };
-    }
-
-    pub fn set_lte_cfg(&mut self, val: f32) {
-        self.lte_enable = if val != 0.0 { 1 } else { 0 };
-    }
-
-    pub fn set_gps_cfg(&mut self, val: f32) {
-        self.gps_enable = if val != 0.0 { 1 } else { 0 };
-    }
-
-    pub fn get_fronttire_info(&self) -> f32 {
-        self.front_tire.clone()
-    }
-    pub fn set_fronttire_info(&mut self, new_value: f32) {
-        self.front_tire = new_value;
-    }
-
-    pub fn get_reartire_info(&self) -> f32 {
-        self.rear_tire.clone()
-    }
-    pub fn set_reartire_info(&mut self, new_value: f32) {
-        self.rear_tire = new_value;
-    }
-
-    pub fn update_lte_info(&mut self, new_info: LteInfo) {
-        self.lte_info = new_info;
-    }
-
-    pub fn update_wifi_info(&mut self, new_info: WifiInfo) {
-        self.wifi_info = new_info;
-    }
-
-    pub fn get_wifi_info(&self) -> WifiInfo {
-        self.wifi_info.clone()
-    }
-
-    pub fn get_lte_info(&self) -> LteInfo {
-        self.lte_info.clone()
-    }
-
-    pub fn is_wifi_internet_access(&self) -> bool {
-        self.wifi_info.internetable
-    }
-
-    pub fn is_lte_internet_access(&self) -> bool {
-        self.lte_info.internetable
-    }
-    
-    pub fn get_gps_info(&self) -> GpsInfo {
-        self.gps_info.clone()
     }
 }
