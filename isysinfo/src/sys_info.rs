@@ -30,6 +30,7 @@ pub struct GpsInfo {
     pub location: LocationData,
     pub movement: MovementData,
     pub accuracy: AccuracyData,
+    pub timezone: Vec<u8>
 }
 
 impl GpsInfo {
@@ -51,7 +52,8 @@ impl GpsInfo {
                 accuracy: 0.0,
                 epx_m: 0.0,
                 epy_m: 0.0
-            }
+            },
+            timezone: Vec::new()
         }
     }
 }
@@ -62,7 +64,6 @@ pub struct WifiInfo {
     pub mac: [u8; 6],
     pub signal: f32,
     pub ipv4: [u8; 4],
-    pub ipv6: [u8; 8],
     pub sec: u8, // Security level
     pub internetable: bool,
 }
@@ -74,7 +75,6 @@ impl WifiInfo {
             mac: [0u8; 6],
             signal: 0.0,
             ipv4: [0u8; 4],
-            ipv6: [0u8; 8],
             sec: 0, // Initialize security level
             internetable: false,
         }
@@ -85,10 +85,8 @@ impl WifiInfo {
 pub struct LteInfo {
     pub ops: Vec<u8>,
     pub ipv4: [u8; 4],
-    pub internetable: bool,
     pub signal: f32,
-    pub gpslocked: bool,
-    pub timezone: [u8; 20]
+    pub internetable: bool,
 }
 
 impl LteInfo {
@@ -96,10 +94,8 @@ impl LteInfo {
         LteInfo {
             ops: Vec::new(),
             ipv4: [0u8; 4],
-            internetable: false,
             signal: 0.0,
-            gpslocked: false,
-            timezone: [0u8; 20]
+            internetable: false,
         }
     }
 }
