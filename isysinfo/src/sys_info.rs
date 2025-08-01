@@ -148,6 +148,17 @@ pub struct SysInfo {
     pub odo_m: u32,
     pub front_tire: f32,
     pub rear_tire: f32,
+    pub tel_version: Vec<u8>,
+    pub rel_version: Vec<u8>,
+    pub espwifi_version: Vec<u8>,
+    pub ble_version: Vec<u8>,
+    pub espmqtt_version: Vec<u8>,
+    pub mot_version: Vec<u8>,
+    pub bms_version: Vec<u8>,
+    pub obc_version: Vec<u8>,
+    pub tpms_version: Vec<u8>,
+    pub uds_version: Vec<u8>,
+    pub oem_info: Vec<u8>
 }
 
 impl SysInfo {
@@ -168,6 +179,17 @@ impl SysInfo {
             odo_m: 0,
             front_tire: 0.0,
             rear_tire: 0.0,
+            tel_version: Vec::new(),
+            rel_version: Vec::new(),
+            espwifi_version: Vec::new(),
+            ble_version: Vec::new(),
+            espmqtt_version: Vec::new(),
+            mot_version: Vec::new(),
+            bms_version: Vec::new(),
+            obc_version: Vec::new(),
+            tpms_version: Vec::new(),
+            uds_version: Vec::new(),
+            oem_info: Vec::new(),
         }
     }
 }
