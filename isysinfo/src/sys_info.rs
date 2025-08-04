@@ -131,6 +131,40 @@ impl BikeNotice {
     }
 }
 
+
+#[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
+pub struct BikeSwVersion {
+    pub tel_version: [u8; 8],
+    pub rel_version: [u8; 8],
+    pub espwifi_version: [u8; 8],
+    pub ble_version: [u8; 8],
+    pub espmqtt_version: [u8; 8],
+    pub mot_version: [u8; 8],
+    pub bms_version: [u8; 8],
+    pub obc_version: [u8; 8],
+    pub tpms_version: [u8; 8],
+    pub uds_version: [u8; 8],
+    pub oem_info: [u8; 8]
+}
+
+impl BikeSwVersion {
+    pub fn new() -> Self {
+        BikeSwVersion {
+            tel_version: [0u8; 8],
+            rel_version: [0u8; 8],
+            espwifi_version: [0u8; 8],
+            ble_version: [0u8; 8],
+            espmqtt_version: [0u8; 8],
+            mot_version: [0u8; 8],
+            bms_version: [0u8; 8],
+            obc_version: [0u8; 8],
+            tpms_version: [0u8; 8],
+            uds_version: [0u8; 8],
+            oem_info: [0u8; 8],
+        }
+    }
+}
+
 #[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
 pub struct SysInfo {
     pub req: u32,
@@ -148,17 +182,6 @@ pub struct SysInfo {
     pub odo_m: u32,
     pub front_tire: f32,
     pub rear_tire: f32,
-    pub tel_version: [u8; 8],
-    pub rel_version: [u8; 8],
-    pub espwifi_version: [u8; 8],
-    pub ble_version: [u8; 8],
-    pub espmqtt_version: [u8; 8],
-    pub mot_version: [u8; 8],
-    pub bms_version: [u8; 8],
-    pub obc_version: [u8; 8],
-    pub tpms_version: [u8; 8],
-    pub uds_version: [u8; 8],
-    pub oem_info: [u8; 8]
 }
 
 impl SysInfo {
@@ -178,18 +201,7 @@ impl SysInfo {
             steering: 0,
             odo_m: 0,
             front_tire: 0.0,
-            rear_tire: 0.0,
-            tel_version: [0u8; 8],
-            rel_version: [0u8; 8],
-            espwifi_version: [0u8; 8],
-            ble_version: [0u8; 8],
-            espmqtt_version: [0u8; 8],
-            mot_version: [0u8; 8],
-            bms_version: [0u8; 8],
-            obc_version: [0u8; 8],
-            tpms_version: [0u8; 8],
-            uds_version: [0u8; 8],
-            oem_info: [0u8; 8],
+            rear_tire: 0.0
         }
     }
 }

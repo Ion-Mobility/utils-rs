@@ -1,7 +1,7 @@
 use zbus::{Connection, Proxy};
 use zbus::fdo::Result;
 // use isysinfo::sys_info::SysInfo;
-use isysinfo::sys_info::{LteInfo, SysInfo, WifiInfo, BikeNotice, GpsInfo};
+use isysinfo::sys_info::{LteInfo, SysInfo, WifiInfo, BikeNotice, GpsInfo, BikeSwVersion};
 use tokio::time::timeout;
 use std::time::Duration;
 // use zbus::{Error, fdo};
@@ -103,6 +103,24 @@ pub async fn get_isys_info() -> Result<SysInfo> {
         .await {
             // Call the D-Bus method to get system info (returns Vec<u8>)
             _result = proxy.call("GetSystemInfo", &()).await?;
+        } 
+    }
+    Ok(_result)
+}
+
+pub async fn get_fwversion_info() -> Result<BikeSwVersion> {
+    // Create a connection to the system bus
+    let mut _result: BikeSwVersion = BikeSwVersion::new();
+    if let Ok(connection) = Connection::system().await {
+        if let Ok(proxy) = Proxy::new(
+            &connection,
+            "org.ion.IComGateway",  // D-Bus destination (service name)
+            "/org/ion/IComGateway", // Object path
+            "org.ion.IComGateway",  // Introspection interface
+        )
+        .await {
+            // Call the D-Bus method to get system info (returns Vec<u8>)
+            _result = proxy.call("GetFirmwareInfo", &()).await?;
         } 
     }
     Ok(_result)
