@@ -131,6 +131,40 @@ impl BikeNotice {
     }
 }
 
+
+#[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
+pub struct BikeSwVersion {
+    pub tel_version: [u8; 8],
+    pub rel_version: [u8; 8],
+    pub espwifi_version: [u8; 8],
+    pub ble_version: [u8; 8],
+    pub espmqtt_version: [u8; 8],
+    pub mot_version: [u8; 8],
+    pub bms_version: [u8; 8],
+    pub obc_version: [u8; 8],
+    pub tpms_version: [u8; 8],
+    pub uds_version: [u8; 8],
+    pub oem_info: [u8; 8]
+}
+
+impl BikeSwVersion {
+    pub fn new() -> Self {
+        BikeSwVersion {
+            tel_version: [0u8; 8],
+            rel_version: [0u8; 8],
+            espwifi_version: [0u8; 8],
+            ble_version: [0u8; 8],
+            espmqtt_version: [0u8; 8],
+            mot_version: [0u8; 8],
+            bms_version: [0u8; 8],
+            obc_version: [0u8; 8],
+            tpms_version: [0u8; 8],
+            uds_version: [0u8; 8],
+            oem_info: [0u8; 8],
+        }
+    }
+}
+
 #[derive(SerdeSerialize, SerdeDeserialize, Type, PartialEq, Debug, Clone)]
 pub struct SysInfo {
     pub req: u32,
@@ -148,17 +182,6 @@ pub struct SysInfo {
     pub odo_m: u32,
     pub front_tire: f32,
     pub rear_tire: f32,
-    pub tel_version: Vec<u8>,
-    pub rel_version: Vec<u8>,
-    pub espwifi_version: Vec<u8>,
-    pub ble_version: Vec<u8>,
-    pub espmqtt_version: Vec<u8>,
-    pub mot_version: Vec<u8>,
-    pub bms_version: Vec<u8>,
-    pub obc_version: Vec<u8>,
-    pub tpms_version: Vec<u8>,
-    pub uds_version: Vec<u8>,
-    pub oem_info: Vec<u8>
 }
 
 impl SysInfo {
@@ -178,18 +201,7 @@ impl SysInfo {
             steering: 0,
             odo_m: 0,
             front_tire: 0.0,
-            rear_tire: 0.0,
-            tel_version: Vec::new(),
-            rel_version: Vec::new(),
-            espwifi_version: Vec::new(),
-            ble_version: Vec::new(),
-            espmqtt_version: Vec::new(),
-            mot_version: Vec::new(),
-            bms_version: Vec::new(),
-            obc_version: Vec::new(),
-            tpms_version: Vec::new(),
-            uds_version: Vec::new(),
-            oem_info: Vec::new(),
+            rear_tire: 0.0
         }
     }
 }
