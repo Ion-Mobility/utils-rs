@@ -92,15 +92,16 @@ impl IONICOMPacketType {
         println!("Payload Dump:");
 
         for (i, chunk) in self.Payload.chunks(ICOM_FN_MAX_LEN).enumerate() {
-            // Display the function index
             println!("Function {}:", i);
 
-            // Print the chunk in hexadecimal
-            for byte in chunk {
+            // Find last non-zero byte index
+            let end = chunk.iter().rposition(|&b| b != 0).map(|pos| pos + 1).unwrap_or(0);
+
+            // Only print up to that point
+            for byte in &chunk[..end] {
                 print!("{:02X} ", byte);
             }
-
-            println!(); // Newline after each function chunk
+            println!();
         }
         println!("====================================================");
     }
@@ -113,13 +114,8 @@ impl IONICOMPacketType {
         if end > self.PayloadLen as usize || start >= self.PayloadLen as usize {
             return Err("Function code out of bounds");
         }
-        if self.Payload[start] != 0 {
-            // Extract the corresponding function slice
-            let func_data = self.Payload[start..end].to_vec();
-            Ok(func_data)
-        } else {
-            return Err("Function code fncode empty");
-        }
+        // Extract the corresponding function slice
+        Ok(self.Payload[start..end].to_vec())
     }
 
     pub fn set_func(&mut self, fncode: u8, data: Vec<u8>) -> Result<(), &'static str> {
