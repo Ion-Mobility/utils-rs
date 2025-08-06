@@ -821,3 +821,12 @@ pub async fn turn_on_wifi(interface: &str) -> Result<(), Box<dyn std::error::Err
 
     Ok(())
 }
+
+pub async fn get_wl_firmare() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let path = "/dev/esp_version";
+
+    // Read entire file asynchronously into Vec<u8>
+    let data = tokio::fs::read(path).await?;
+
+    Ok(data)
+}
