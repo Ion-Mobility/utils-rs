@@ -358,7 +358,7 @@ fn convert_hashmap<'a>(
 async fn check_connection_success(
     interface: &str,
     ssid: &str,
-) -> Result<(bool, WifiInfo), Box<dyn std::error::Error>> {
+) -> Result<(bool, String, WifiInfo), Box<dyn std::error::Error>> {
     let connection = Connection::system().await?;
     let nm = NetworkManagerProxy::new(&connection).await?;
     let devices = nm.devices().await?;
@@ -403,6 +403,7 @@ async fn check_connection_success(
                                     Str::from("")
                                 }
                             };
+                            println!("check id: {}, interface: {}", _id, _interface);
                             if _id == ssid && _interface == interface {
                                 let ip4_str = get_ip4_str_address(&device_proxy, &connection).await;                              
                                 let ip4_address = ip_to_bytes(&ip4_str);
@@ -432,6 +433,12 @@ async fn check_connection_success(
                                     WifiSecurity::WifiSecOpen
                                 };
 
+                                println!("mac: {}", hw_address);
+                                println!("freq: {}", frequency);
+                                println!("rssi: {}", signal_strength);
+                                println!("security: {:?}", security_type);
+                                println!("ip4_addr: {:?}", ip4_address);
+                                
                                 let wifi_info = WifiInfo {
                                     mac: mac_str_to_array(&hw_address)?,
                                     freq: frequency,
@@ -439,7 +446,7 @@ async fn check_connection_success(
                                     security: security_type,
                                     ip4_addr: ip4_address
                                 };
-                                return Ok((true, wifi_info));
+                                return Ok((true, _id.to_string(), wifi_info));
                             }
 
                         }
@@ -451,7 +458,7 @@ async fn check_connection_success(
             }
         }
     }
-    return Ok((false, WifiInfo {
+    return Ok((false, "".to_string(), WifiInfo {
         mac:  [0u8; WIFI_MAC_LEN],
         freq: 0,
         rssi: 0,
@@ -634,9 +641,9 @@ pub async fn connect_wifi(
     if check_result.0 == false {
         while start.elapsed() < timeout {
             check_result = check_connection_success(interface, ssid).await?;
-            if check_result.0 {
+            if check_result.0 && check_result.1 == ssid {
                 println!("Connected to Wi-Fi network '{}'", ssid);
-                return Ok(check_result); // Successfully connected to the correct SSID
+                return Ok((check_result.0, check_result.2)); // Successfully connected to the correct SSID
             }
 
             // Sleep for a short duration between checks (e.g., 1 second)
@@ -644,7 +651,7 @@ pub async fn connect_wifi(
         }
     }
     println!("Cannot Connect to Wi-Fi network '{}'", ssid);
-    Ok(check_result)
+    Ok((check_result.0, check_result.2))
 }
 
 pub async fn remove_stored_wifi(remove_apname: String) -> Result<bool, Box<dyn std::error::Error>> {
@@ -716,9 +723,13 @@ pub async fn get_ap_info(
                                 // println!("SSID: {:?}", ssid);
                                 match check_connection_success(interface, &ssid.to_string()).await {
                                     Ok(_result) => {
-                                        return Ok((ssid.to_string(),_result.1));
+                                        if _result.0 && _result.1 == ssid.to_string() {
+                                            return Ok((ssid.to_string(),_result.2));
+                                        }
                                     }
-                                    Err(_) => {}
+                                    Err(e) => {
+                                        println!("No connection to {}: {}", ssid.to_string(), e);
+                                    }
                                 }
                             }
                         }
