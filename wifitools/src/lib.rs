@@ -1,5 +1,5 @@
 use rusty_network_manager::{
-    AccessPointProxy, NetworkManagerProxy, SettingsConnectionProxy, SettingsProxy, WirelessProxy, DeviceProxy, IP4ConfigProxy
+    ActiveProxy, AccessPointProxy, NetworkManagerProxy, SettingsConnectionProxy, SettingsProxy, WirelessProxy, DeviceProxy, IP4ConfigProxy
 };
 // use zbus::zvariant::{OwnedValue, Value as ZValue};
 use std::collections::HashMap;
@@ -366,45 +366,39 @@ async fn check_connection_success(
         let device_proxy = DeviceProxy::new_from_path(device_path.clone(), &connection).await?;
         let device_interface = device_proxy.interface().await?;
 
+        let active_path = device_proxy.active_connection().await?;
+        if active_path.as_str().is_empty() {
+            continue;
+        }
+
         // Check if this is the desired interface
-        if device_interface == interface {
-            // println!("{:?}", DeviceState::from_u32(device_proxy.state().await?));
-            match DeviceState::from_u32(device_proxy.state().await?) {
-                Some(DeviceState::Activated) => {
-                    let settings_proxy = SettingsProxy::new(&connection).await?;
-                    let connections: Vec<zvariant::OwnedObjectPath> = settings_proxy.list_connections().await?;
-                
-                    // Try to find an existing connection with the same SSID or interface name
-                    for connection_path in connections {
-                        let setting_connection_proxy =
-                            SettingsConnectionProxy::new_from_path(connection_path.clone(), &connection).await?;
-                
-                        let settings = setting_connection_proxy.get_settings().await?;
-                        // println!("Setting: {:?}", settings);
-                        if let Some(connection_props) = settings.get("connection") {
-                            let id = connection_props
-                                .get("id")
-                                .and_then(|v| Some(v.downcast_ref::<Str>()));
-                            let interface_name = connection_props
-                                .get("interface-name")
-                                .and_then(|v| Some(v.downcast_ref::<Str>()));
-                
-                                let _id = {
-                                if let Some(Ok(_id)) = id {
-                                    _id
-                                } else {
-                                    Str::from("")
-                                }
-                            };
-                            let _interface = {
-                                if let Some(Ok(_interface)) = interface_name {
-                                    _interface
-                                } else {
-                                    Str::from("")
-                                }
-                            };
-                            println!("check id: {}, interface: {}", _id, _interface);
-                            if _id == ssid && _interface == interface {
+        if device_interface != interface {
+            continue;
+        }
+
+        // println!("{:?}", DeviceState::from_u32(device_proxy.state().await?));
+        match DeviceState::from_u32(device_proxy.state().await?) {
+            Some(DeviceState::Activated) => {
+                let active_proxy = ActiveProxy::new_from_path(active_path, &connection).await?;
+                let active_devices = active_proxy.devices().await?;
+
+                if active_devices.is_empty() {
+                    println!("No active devices found for the connection.");
+                    continue; // No active devices, skip to the next device
+                }
+
+                for dev_path in active_devices {
+                    let dev = DeviceProxy::new_from_path(dev_path.clone(), &connection).await?;
+                    if dev.interface().await? == interface {
+                        // Connected matching interface
+                        let specific = active_proxy.specific_object().await?;
+                        if !specific.as_str().is_empty() {
+                            let ap = AccessPointProxy::new_from_path(specific.clone(), &connection).await?;
+                            let ssid_bytes = ap.ssid().await?;
+                            let found_ssid = String::from_utf8_lossy(&ssid_bytes).to_string();
+                            println!("Connected ssid: {:?}", found_ssid);
+
+                            if found_ssid == ssid {
                                 let ip4_str = get_ip4_str_address(&device_proxy, &connection).await;                              
                                 let ip4_address = ip_to_bytes(&ip4_str);
 
@@ -446,15 +440,14 @@ async fn check_connection_success(
                                     security: security_type,
                                     ip4_addr: ip4_address
                                 };
-                                return Ok((true, _id.to_string(), wifi_info));
+                                return Ok((true, found_ssid, wifi_info));
                             }
-
                         }
                     }
                 }
-                _ => {
+            }
+            _ => {
 
-                }
             }
         }
     }
