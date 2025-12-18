@@ -5,7 +5,7 @@ use rusty_network_manager::{
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration, Instant};
 use zbus::zvariant::Value;
-use zbus::{Connection, Proxy};
+use zbus::{Connection, Proxy, conn};
 use zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Str};
 use std::net::Ipv4Addr;
 use tokio::sync::Mutex;
@@ -146,48 +146,17 @@ pub async fn scan_wifi(
             for ap_path in access_points {
                 let access_point = AccessPointProxy::new_from_path(ap_path, &connection).await?;
                 let ssid = access_point.ssid().await.unwrap();
-                let frequency = access_point.frequency().await.unwrap();
-                let hw_address = access_point.hw_address().await.unwrap();
-                let signal_strength = access_point.strength().await.unwrap(); // Signal strength in dBm
 
-                let flags = access_point.flags().await.unwrap();
-                let wpa_flags = access_point.wpa_flags().await.unwrap();
-                let rsn_flags = access_point.rsn_flags().await.unwrap();
-
-                let security_type: WifiSecurity = if rsn_flags != 0 {
-                    // "WPA2/WPA3"
-                    WifiSecurity::WifiSecWpa23
-                } else if wpa_flags != 0 {
-                    // "WPA"
-                    WifiSecurity::WifiSecWpa
-                } else if flags & 0x01 != 0 {
-                    // "WEP"
-                    WifiSecurity::WifiSecWep
-                } else {
-                    // "Open"
-                    WifiSecurity::WifiSecOpen
-                };
-
-                let mut ip4_address = [0, 0, 0, 0];
-                let check_connection = check_connection_success(interface, &String::from_utf8(ssid.clone()).unwrap()).await?;
-                if check_connection.0 {
-                    let device_proxy = DeviceProxy::new_from_path(wireless_path.clone(), &connection).await?;
-                    let ip4_str = get_ip4_str_address(&device_proxy, &connection).await;
-                    ip4_address = ip_to_bytes(&ip4_str);
+                match check_connection_success(interface, &String::from_utf8(ssid.clone()).unwrap()).await {
+                    Ok(check_connection) => {
+                        scan_results.insert(
+                            check_connection.1,
+                            check_connection.2,
+                        );
+                    }
+                    _ => {}
                 }
 
-                let ssid_str = String::from_utf8(ssid).unwrap();
-                let wifi_info = WifiInfo {
-                    mac: mac_str_to_array(&hw_address)?,
-                    freq: frequency,
-                    rssi: signal_strength,
-                    security: security_type,
-                    ip4_addr: ip4_address
-                };
-                scan_results.insert(
-                    ssid_str,
-                    wifi_info,
-                );
             }
             break;
         }
@@ -362,6 +331,7 @@ async fn check_connection_success(
     let connection = Connection::system().await?;
     let nm = NetworkManagerProxy::new(&connection).await?;
     let devices = nm.devices().await?;
+
     for device_path in devices {
         let device_proxy = DeviceProxy::new_from_path(device_path.clone(), &connection).await?;
         let device_interface = device_proxy.interface().await?;
@@ -396,53 +366,65 @@ async fn check_connection_success(
                             let ap = AccessPointProxy::new_from_path(specific.clone(), &connection).await?;
                             let ssid_bytes = ap.ssid().await?;
                             let found_ssid = String::from_utf8_lossy(&ssid_bytes).to_string();
-                            println!("Connected ssid: {:?}", found_ssid);
+                            println!("Connected to ssid: {:?}", found_ssid);
 
+                            let mut ap_info = (false, found_ssid.clone(), WifiInfo {
+                                mac:  [0u8; WIFI_MAC_LEN],
+                                freq: 0,
+                                rssi: 0,
+                                security: WifiSecurity::WifiSecOpen,
+                                ip4_addr: [0u8; 4]} );
+                            
                             if found_ssid == ssid {
-                                let ip4_str = get_ip4_str_address(&device_proxy, &connection).await;                              
-                                let ip4_address = ip_to_bytes(&ip4_str);
-
-                                let wireless_path = nm.get_device_by_ip_iface(interface).await?;
-                                let wireless_proxy = WirelessProxy::new_from_path(wireless_path.clone(), &connection).await?;
-                                let access_point_path = wireless_proxy.active_access_point().await?;
-                                let access_point = AccessPointProxy::new_from_path(access_point_path, &connection).await?;
-                                let frequency = access_point.frequency().await.unwrap();
-                                let hw_address = access_point.hw_address().await.unwrap();
-                                let signal_strength = access_point.strength().await.unwrap(); // Signal strength in dBm
-                                let flags = access_point.flags().await.unwrap();
-                                let wpa_flags = access_point.wpa_flags().await.unwrap();
-                                let rsn_flags = access_point.rsn_flags().await.unwrap();
-
-                                let security_type: WifiSecurity = if rsn_flags != 0 {
-                                    // "WPA2/WPA3"
-                                    WifiSecurity::WifiSecWpa23
-                                } else if wpa_flags != 0 {
-                                    // "WPA"
-                                    WifiSecurity::WifiSecWpa
-                                } else if flags & 0x01 != 0 {
-                                    // "WEP"
-                                    WifiSecurity::WifiSecWep
-                                } else {
-                                    // "Open"
-                                    WifiSecurity::WifiSecOpen
-                                };
-
-                                println!("mac: {}", hw_address);
-                                println!("freq: {}", frequency);
-                                println!("rssi: {}", signal_strength);
-                                println!("security: {:?}", security_type);
-                                println!("ip4_addr: {:?}", ip4_address);
-                                
-                                let wifi_info = WifiInfo {
-                                    mac: mac_str_to_array(&hw_address)?,
-                                    freq: frequency,
-                                    rssi: signal_strength,
-                                    security: security_type,
-                                    ip4_addr: ip4_address
-                                };
-                                return Ok((true, found_ssid, wifi_info));
+                                println!("Connected to desired SSID: {}", ssid);
+                                ap_info.0 = true;
                             }
+
+                            let ip4_str = get_ip4_str_address(&device_proxy, &connection).await;                              
+                            let ip4_address = ip_to_bytes(&ip4_str);
+
+                            let wireless_path = nm.get_device_by_ip_iface(interface).await?;
+                            let wireless_proxy = WirelessProxy::new_from_path(wireless_path.clone(), &connection).await?;
+                            let access_point_path = wireless_proxy.active_access_point().await?;
+                            let access_point = AccessPointProxy::new_from_path(access_point_path, &connection).await?;
+                            let frequency = access_point.frequency().await.unwrap();
+                            let hw_address = access_point.hw_address().await.unwrap();
+                            let signal_strength = access_point.strength().await.unwrap(); // Signal strength in dBm
+                            let flags = access_point.flags().await.unwrap();
+                            let wpa_flags = access_point.wpa_flags().await.unwrap();
+                            let rsn_flags = access_point.rsn_flags().await.unwrap();
+
+                            let security_type: WifiSecurity = if rsn_flags != 0 {
+                                // "WPA2/WPA3"
+                                WifiSecurity::WifiSecWpa23
+                            } else if wpa_flags != 0 {
+                                // "WPA"
+                                WifiSecurity::WifiSecWpa
+                            } else if flags & 0x01 != 0 {
+                                // "WEP"
+                                WifiSecurity::WifiSecWep
+                            } else {
+                                // "Open"
+                                WifiSecurity::WifiSecOpen
+                            };
+
+                            println!("mac: {}", hw_address);
+                            println!("freq: {}", frequency);
+                            println!("rssi: {}", signal_strength);
+                            println!("security: {:?}", security_type);
+                            println!("ip4_addr: {:?}", ip4_address);
+
+                            ap_info.2 = WifiInfo {
+                                mac: mac_str_to_array(&hw_address)?,
+                                freq: frequency,
+                                rssi: signal_strength,
+                                security: security_type,
+                                ip4_addr: ip4_address
+                            };
+                            return Ok(ap_info);
                         }
+                    } else {
+                        // Not the desired interface, skip
                     }
                 }
             }
@@ -451,12 +433,7 @@ async fn check_connection_success(
             }
         }
     }
-    return Ok((false, "".to_string(), WifiInfo {
-        mac:  [0u8; WIFI_MAC_LEN],
-        freq: 0,
-        rssi: 0,
-        security: WifiSecurity::WifiSecOpen,
-        ip4_addr: [0u8; 4]} ));
+    return Err("No Connection".into());
 }
 
 fn ip_to_bytes(ip_str: &str) -> [u8; 4] {
@@ -488,7 +465,7 @@ pub async fn connect_wifi(
     ssid: &str,
     password: Option<&str>,
     timeout: Duration
-) -> Result<(bool, WifiInfo), Box<dyn std::error::Error>> {
+) -> Result<(bool, String, WifiInfo), Box<dyn std::error::Error>> {
     if ssid.len() > 32 {
         return Err("SSID Invalid".into());
     }
@@ -630,21 +607,28 @@ pub async fn connect_wifi(
     }
     let start = Instant::now();
 
+
     let mut check_result = check_connection_success(interface, ssid).await?;
-    if check_result.0 == false {
+    if check_result.1 != ssid {
+        // retry
         while start.elapsed() < timeout {
             check_result = check_connection_success(interface, ssid).await?;
-            if check_result.0 && check_result.1 == ssid {
+            if check_result.1 == ssid {
                 println!("Connected to Wi-Fi network '{}'", ssid);
-                return Ok((check_result.0, check_result.2)); // Successfully connected to the correct SSID
+                return Ok(check_result); // Successfully connected to the correct SSID
             }
-
             // Sleep for a short duration between checks (e.g., 1 second)
             sleep(Duration::from_secs(1)).await;
         }
+    } else {
+        println!("Connected to Wi-Fi network '{}'", ssid);
     }
-    println!("Cannot Connect to Wi-Fi network '{}'", ssid);
-    Ok((check_result.0, check_result.2))
+    
+    if check_result.0 {
+        Ok(check_result)
+    } else {
+        Err("Not Connect".into())
+    }
 }
 
 pub async fn remove_stored_wifi(remove_apname: String) -> Result<bool, Box<dyn std::error::Error>> {

@@ -17,15 +17,14 @@ async fn main() {
 
     match get_ap_info(interface).await {
         Ok(ap_info) => {
-            if let Ok((found_ssid, info)) = ap_info.try_into() {
-                println!("SSID: {}", found_ssid);
-                println!("Info: {:?}", info);
+            let (found_ssid, info) = ap_info;
+            println!("SSID: {}", found_ssid);
+            println!("Info: {:?}", info);
 
-                if found_ssid == ssid {
-                    println!("Connected to desired SSID ✅");
-                } else {
-                    println!("Connected, but SSID does not match ❌");
-                }
+            if found_ssid == ssid {
+                println!("Connected to desired SSID ✅");
+            } else {
+                println!("Connected, but SSID does not match ❌");
             }
         }
         Err(e) => {
