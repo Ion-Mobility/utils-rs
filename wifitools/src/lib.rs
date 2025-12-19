@@ -74,6 +74,18 @@ pub struct WifiInfo {
     pub ip4_addr: [u8; 4],
 }
 
+impl Default for WifiInfo {
+    fn default() -> Self {
+        Self {
+            mac: [0u8; WIFI_MAC_LEN],
+            freq: 0,
+            rssi: 0,
+            security: WifiSecurity::WifiSecOpen,
+            ip4_addr: [0u8; 4],
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WifiStoredInfo {
     pub created: String,
@@ -641,26 +653,33 @@ pub async fn connect_wifi(
     let start = Instant::now();
 
 
-    let mut check_result = check_connection_success(interface, ssid).await?;
-    if check_result.1 != ssid {
-        // retry
-        while start.elapsed() < timeout {
-            check_result = check_connection_success(interface, ssid).await?;
-            if check_result.1 == ssid {
-                println!("Connected to Wi-Fi network '{}'", ssid);
-                return Ok(check_result); // Successfully connected to the correct SSID
+    while start.elapsed() < timeout {
+        match check_connection_success(interface, ssid).await {
+            Ok(result) => {
+                if result.0 {
+                    println!("Connected to Wi-Fi network '{}'", result.1);
+                    return Ok(result);    
+                } else {
+                    println!("Connecting...");
+                    sleep(Duration::from_secs(1)).await;
+                }
             }
-            // Sleep for a short duration between checks (e.g., 1 second)
-            sleep(Duration::from_secs(1)).await;
+            Err(_e) => {
+                println!("Retrying...");
+                sleep(Duration::from_secs(1)).await;
+            }
         }
-    } else {
-        println!("Connected to Wi-Fi network '{}'", ssid);
     }
-    
-    if check_result.0 {
-        Ok(check_result)
-    } else {
-        Err("Not Connect".into())
+
+    //report latest connection status
+    match check_connection_success(interface, ssid).await {
+        Ok(result) => {
+            println!("Connected to Wi-Fi network '{}'", result.1);
+            Ok(result)
+        }
+        Err(_e) => {
+            Err("Not Connect".into())
+        }
     }
 }
 
