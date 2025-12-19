@@ -2,23 +2,33 @@ use wifitools::get_ap_info;
 
 #[tokio::main]
 async fn main() {
-    // Get command-line arguments
     let args: Vec<String> = std::env::args().collect();
 
-    // You can access specific arguments, e.g., the first one after the program name
-    if args.len() < 2 {
-        eprintln!("Lack of wifi interface name");
-    } else {
-        match get_ap_info(&args[1]).await {
-            Ok(_ap_info) => {
-                if let Ok((_ssid, _info)) = _ap_info.try_into() {
-                    println!("SSID {}, Infor {:?}", _ssid, _info);                    
-                }
-                println!("Wifi turned on");
+    if args.len() < 3 {
+        eprintln!("Usage: {} <interface> <ssid>", args[0]);
+        eprintln!(r#"Example: {} wlan0 "My Home Wifi""#, args[0]);
+        return;
+    }
+
+    let interface = &args[1];
+
+    // Join remaining args into SSID (allows spaces)
+    let ssid = args[2..].join(" ");
+
+    match get_ap_info(interface).await {
+        Ok(ap_info) => {
+            let (found_ssid, info) = ap_info;
+            println!("SSID: {}", found_ssid);
+            println!("Info: {:?}", info);
+
+            if found_ssid == ssid {
+                println!("Connected to desired SSID ✅");
+            } else {
+                println!("Connected, but SSID does not match ❌");
             }
-            Err(e) => {
-                eprintln!("Can't turn on wifi {}", e);
-            }
+        }
+        Err(e) => {
+            eprintln!("Can't get AP info: {}", e);
         }
     }
 }
