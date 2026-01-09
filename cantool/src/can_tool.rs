@@ -17,6 +17,13 @@ pub struct CanUtils {
     can_socket: CANSocket,
 }
 
+#[derive(Debug, Clone)]
+pub struct RawCanFrame {
+    pub id: u32,
+    pub data: [u8; 8],
+    pub dlc: usize,
+}
+
 impl CanUtils {
     const DEFAULT_DBC_PATH: &'static str = "/usr/share/can-dbcs/consolidated.dbc";
 
@@ -121,6 +128,32 @@ impl CanUtils {
         }
     }
 
+    pub async fn try_get_raw_frame(
+        &mut self,
+    ) -> Result<RawCanFrame, Box<dyn std::error::Error + Send + Sync>> {
+        match self.can_socket.try_next().await {
+            Ok(Some(frame)) => {
+                let mut data = [0u8; 8];
+                let frame_data = frame.data();
+                let dlc = frame_data.len().min(8);
+
+                data[..dlc].copy_from_slice(&frame_data[..dlc]);
+
+                Ok(RawCanFrame {
+                    id: frame.id(),
+                    data,
+                    dlc,
+                })
+            }
+            Ok(None) => Err("No more frames available.".into()),
+            Err(e) => {
+                error!("Failed to receive CAN frame: {}, sleep a bit", e);
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                Err("Failed to receive CAN frame".into())
+            }
+        }
+    }
+
     /// Asynchronously fetches signals from CAN frames with socket restart logic and timeout
     pub async fn get_signals(
         &mut self,
@@ -161,33 +194,50 @@ impl CanUtils {
     }
 
     /// Asynchronously fetches signals from CAN frames with socket restart logic and timeout
+    // pub async fn try_get_signals(
+    //     &mut self,
+    // ) -> Result<HashMap<String, f32>, Box<dyn std::error::Error + Send + Sync>> {
+    //     // Use the `timeout` function with the resolved duration
+    //     let frame_result = self.can_socket.try_next().await;
+    //     match frame_result {
+    //         Ok(Some(frame)) => {
+    //             let frame_id = frame.id() | 0x80000000;
+    //             for message in self.dbc.messages() {
+    //                 if frame_id == (message.message_id().raw()) {
+    //                     let padding_data = self.pad_to_8_bytes(frame.data());
+    //                     let signal_data = message.parse_from_can(&padding_data);
+    //                     return Ok(signal_data);
+    //                 }
+    //             }
+    //             error!("Message ID {:x} not found in DBC", frame.id());
+    //             Err("Message ID not found in DBC.".into())
+    //         }
+    //         Ok(None) => Err("No more frames available.".into()),
+    //         Err(_e) => {
+    //             error!("Failed to receive CAN frame: {}, sleep a bit", _e);
+    //             tokio::time::sleep(Duration::from_secs(1)).await;
+    //             Err("Failed to receive CAN frame".into())
+    //         }
+    //     }
+    // }
     pub async fn try_get_signals(
         &mut self,
     ) -> Result<HashMap<String, f32>, Box<dyn std::error::Error + Send + Sync>> {
-        // Use the `timeout` function with the resolved duration
-        let frame_result = self.can_socket.try_next().await;
-        match frame_result {
-            Ok(Some(frame)) => {
-                let frame_id = frame.id() | 0x80000000;
-                for message in self.dbc.messages() {
-                    if frame_id == (message.message_id().raw()) {
-                        let padding_data = self.pad_to_8_bytes(frame.data());
-                        let signal_data = message.parse_from_can(&padding_data);
-                        return Ok(signal_data);
-                    }
-                }
-                error!("Message ID {:x} not found in DBC", frame.id());
-                Err("Message ID not found in DBC.".into())
-            }
-            Ok(None) => Err("No more frames available.".into()),
-            Err(_e) => {
-                error!("Failed to receive CAN frame: {}, sleep a bit", _e);
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                Err("Failed to receive CAN frame".into())
+        let raw = self.try_get_raw_frame().await?;
+
+        let frame_id = raw.id | 0x8000_0000;
+
+        for message in self.dbc.messages() {
+            if frame_id == message.message_id().raw() {
+                let signal_data = message.parse_from_can(&raw.data);
+                return Ok(signal_data);
             }
         }
-    }
 
+        error!("Message ID {:x} not found in DBC", raw.id);
+        Err("Message ID not found in DBC.".into())
+    }
+    
     fn pad_to_8_bytes(&self, data: &[u8]) -> Vec<u8> {
         // Convert the byte slice to a Vec<u8>
         let mut padded_data = data.to_vec();
