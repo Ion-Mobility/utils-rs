@@ -510,7 +510,7 @@ pub async fn connect_wifi(
     ssid: &str,
     password: Option<&str>,
     timeout: Duration
-) -> Result<(bool, String, WifiInfo), Box<dyn std::error::Error>> {
+) -> Result<(bool, String, WifiInfo), Box<dyn std::error::Error + Send + Sync>> {
     if ssid.len() > 32 {
         return Err("SSID Invalid".into());
     }
